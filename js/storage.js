@@ -3,7 +3,8 @@
 // Every read/write is guarded: storage can be unavailable (private mode, blocked
 // site data), and the app must still work in memory.
 
-const KEY = 'afsplanner.v2';
+const KEY = 'irplanner.v2';
+const LEGACY_KEYS = ['afsplanner.v2']; // read once if KEY is empty (the app was called AFSPlanner)
 
 function blankState() {
   return { version: 2, activeCharacterId: null, characters: [] };
@@ -11,7 +12,8 @@ function blankState() {
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    let raw = localStorage.getItem(KEY);
+    for (const legacy of LEGACY_KEYS) raw ??= localStorage.getItem(legacy);
     if (!raw) return blankState();
     const state = JSON.parse(raw);
     if (!state || !Array.isArray(state.characters)) return blankState();
@@ -183,7 +185,7 @@ export const store = {
   exportAll: () => JSON.stringify(state, null, 1),
   importAll(json) {
     const incoming = JSON.parse(json);
-    if (!incoming || !Array.isArray(incoming.characters)) throw new Error('Not an AFSPlanner backup');
+    if (!incoming || !Array.isArray(incoming.characters)) throw new Error('Not an IRPlanner backup');
     for (const c of incoming.characters) {
       const copy = structuredClone(c);
       copy.id = uid();

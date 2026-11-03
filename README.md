@@ -1,6 +1,6 @@
-# AFSPlanner
+# IRPlanner
 
-A career and character planner for **Tabula Rasa**, built for servers running the final retail client (**1.16.5.0**). You can plan any number of characters, each with any number of builds: level, class path, skill ranks and attribute points. Everything is stored in your browser.
+**Infinite Rasa Planner**: a career and character planner for **Tabula Rasa**, built for servers running the final retail client (**1.16.5.0**). You can plan any number of characters, each with any number of builds: level, class path, skill ranks and attribute points. Everything is stored in your browser.
 
 ## Features
 
@@ -55,6 +55,14 @@ The site is static with no build step, and every path is relative. It works at a
 **Cloudflare Pages**
 1. Go to **Workers & Pages → Create → Pages → Connect to Git** and pick this repo.
 2. Set Framework preset to **None**, leave Build command empty, and set Build output directory to `/`.
+
+## License
+
+Made by [Ar0xA](https://github.com/Ar0xA). The code is under the [MIT License](LICENSE), so other projects (Rasa.NET's website, for example) are welcome to use and adapt it.
+
+If you do, a credit and link back to this repo (https://github.com/Ar0xA/IRPlanner) is appreciated. Keeping the "Made by Ar0xA" line in the footer is the easiest way.
+
+The license covers the planner's code and docs only, not Tabula Rasa game content.
 
 ## Disclaimer
 

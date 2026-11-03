@@ -1,4 +1,4 @@
-/* AFSPlanner — military sci-fi HUD theme.
+/* IRPlanner — military sci-fi HUD theme.
    Dark gunmetal panels with bevelled (clip-path) corners, a faint grid on the backdrop,
    AFS teal-green for anything owned/active, amber for warnings, red for errors. */
 
@@ -512,6 +512,9 @@ dialog::backdrop { background: rgba(4, 8, 10, .7); backdrop-filter: blur(2px); }
 
 .footer { padding: 18px 16px 24px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .footer p { margin: 4px 0; }
+.footer a { color: var(--accent); }
+.footer a:hover { text-decoration: none; }
+.footer .credit { color: var(--text); }
 
 /* ---- responsive --------------------------------------------------------------------------- */
 

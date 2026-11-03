@@ -413,7 +413,7 @@ function wire() {
   // Backup / restore of everything.
   $('#backup-export').addEventListener('click', () => {
     const blob = new Blob([store.exportAll()], { type: 'application/json' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `afsplanner-backup-${new Date().toISOString().slice(0, 10)}.json` });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `irplanner-backup-${new Date().toISOString().slice(0, 10)}.json` });
     document.body.append(a);
     a.click();
     a.remove();
