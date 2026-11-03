@@ -11,18 +11,45 @@
 - **Sharing:** share a build as a code or link. You can back up and restore all your plans as a JSON file.
 - **Storage:** plans live in `localStorage`, so they stay until you clear site data. If storage is blocked, the app still works but warns you to use Backup.
 
-## Where the numbers come from
+## Where the data comes from
 
-| What | Source |
+The planner's data comes from two places:
+- **The game client:** everything the in-game skills window can show on its own.
+- **The server:** the progression rules. The client never had these, because the server decides how many points you get and what your stats are, and sends the client the results.
+
+### From the client (1.16.5.0)
+
+These are read straight from the client's files and code by the scripts in `tools/`. Nothing is typed in by hand.
+
+| What | Where in the client |
 |---|---|
-| Classes, tree, unlock levels, races, XP table | Client data modules (`data/game.zip`: `generated/client/*`) |
-| Skills, max ranks, names, per-rank and per-pump text, Logos sequences, ability costs | Client data modules plus English language tables |
-| Rank cost (rank N costs N points) | Client bytecode: `client/ui/skillsabilitieswindow.pyo`, `OnPlus` |
-| Ability tooltip numbers (damage, range, timings) | Client bytecode: the ability classes' `GetAbilityDataDict` (see `tools/`) |
-| Skill point budget, attribute points, race growth, derived stats | Server-side rules, which the client never had. These follow the [Rasa.NET](https://github.com/InfiniteRasa/Rasa.NET) server: `ManifestationManager.cs` |
-| Skill, per-rank and class icons | Client UI textures in `data/*.glm`, chosen the way the skills window does (`gameuiutil.GetSkillIcon`, `GetAbilityIcon`, `LoadCharacterClassIcon`) |
+| Career tree: the 15 classes, which class leads to which, unlock levels 1 / 5 / 15 / 30 | `generated/client/characterclass`, `client/gameuiutil` (`g_ClassTree`), `generated/client/skilldata` (`skillCharacter`) |
+| Races: Human, Forean, Brann and Thrax hybrids | `generated/client/constant/race` and the English race names |
+| Max level (50) and the XP needed for each level | `generated/client/character` (`experienceTable`) |
+| The 73 skills: which class they belong to, max rank, names, descriptions and per-rank text | `generated/client/skilldata` and the English UI text (`uielementlanguage`) |
+| Abilities: each rank's name and tooltip, power and adrenaline cost, range, activation and cooldown | `generated/client/abilitydata` and `actiondata` |
+| Ability damage and healing at the build's level | The client's own tooltip code, ported: `GetAbilityDataDict` and `shared/scaling` (`ScaleActorAmount`); see `tools/ABILITY_TOOLTIPS.md` |
+| Logos each ability needs | `generated/client/logosstone` (`logosSequences`) |
+| Rank cost: raising a skill to rank N costs N points | The skills window code: `client/ui/skillsabilitieswindow` (`OnPlus`) |
+| Skill, per-rank and class icons | UI textures in `data/*.glm`, picked the way the skills window picks them (`GetSkillIcon`, `GetAbilityIcon`, `LoadCharacterClassIcon`) |
 
-The generated data is in `js/data/gamedata.js`, the icons are in `img/`, and the server rules are in `js/rules.js`, with a source note on each rule.
+The output is `js/data/gamedata.js`, the icons in `img/`, and the tooltip formatting in `js/abilityscale.js`.
+
+### From the server (Rasa.NET)
+
+These numbers are not in the client at all. The planner follows the [Rasa.NET](https://github.com/InfiniteRasa/Rasa.NET) server (`ManifestationManager.cs`, development branch), because that's what Infinite Rasa runs.
+
+| What | Rule |
+|---|---|
+| Training points | 2 per level after level 1, plus 5 for the starting Recruit ranks, plus 2 at levels 5, 15 and 30, plus 4 at level 50 (69 at level 30, 113 at level 50) |
+| Starting skills | New characters have Firearms, Hand to Hand, Motor Assist Armor, Lightning and Sprint at rank 1. Those ranks can't be removed. |
+| Signature skills | Training one costs 1 point, like any other rank 1 |
+| Attribute points | 3 per level after level 1 |
+| Race growth per level (Body / Mind / Spirit) | Human 2/2/2, Forean 1/3/2, Brann 1/1/4, Thrax 3/1/2, from a base of 10/10/10 |
+| Health, power, regeneration | Rasa.NET's formulas (`UpdateStatsValues`), with no gear or buffs |
+| Armor, Logos damage and crit bonus | 0.667% / 0.375% / 0.065% per point of Body / Mind / Spirit above a human's base for that level |
+
+All of these live in `js/rules.js`, with a source note on each one. They are the emulator's reconstruction: the original retail server's formulas were never published. If your server uses different numbers, `js/rules.js` is the only file to change.
 
 ## Regenerating the game data and icons
 
