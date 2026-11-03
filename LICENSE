@@ -20,8 +20,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
-
-This license covers the IRPlanner code and documentation. It does not cover
-Tabula Rasa game content (names, text and data in js/data/gamedata.js, which is
-generated from the game client); that content belongs to its respective owners.
