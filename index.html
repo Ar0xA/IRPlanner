@@ -31,7 +31,7 @@
     <div class="btn-row io">
       <button id="share-open" type="button" class="primary">Share / import</button>
       <button id="backup-export" type="button">Backup</button>
-      <label class="file-btn">Restore<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
+      <label id="restore-btn" class="file-btn" role="button" tabindex="0">Restore<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
     </div>
   </header>
 
@@ -73,6 +73,7 @@
 
       <h3>Attributes</h3>
       <div id="attributes" class="attributes"></div>
+      <p id="attr-hint" class="hint">Shift-click or hold − / + to step faster, or type a total.</p>
       <div id="derived" class="derived"></div>
 
       <h3>Notes</h3>
@@ -84,11 +85,12 @@
 
     <section class="skills" aria-labelledby="skills-title">
       <h2 id="skills-title" class="sr-only">Skills</h2>
+      <div id="budget-bar" class="budget-bar" role="status" aria-live="polite"></div>
       <div id="skill-groups"></div>
     </section>
 
     <aside class="panel detail" aria-live="polite">
-      <h2 class="panel-title">Skill detail</h2>
+      <h2 class="panel-title">Skill detail <button id="detail-close" type="button" class="ghost detail-close" aria-label="Close skill detail">×</button></h2>
       <div id="skill-detail" class="skill-detail"><p class="muted">Select a skill rank to see its details.</p></div>
     </aside>
   </main>

@@ -196,7 +196,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
 }
 .brand-text { display: flex; flex-direction: column; line-height: 1; font-weight: 700; font-size: 22px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-strong); }
-.brand-text small { font-size: 10px; font-weight: 600; letter-spacing: .22em; color: var(--muted); margin-top: 3px; }
+.brand-text small { font-size: 11px; font-weight: 600; letter-spacing: .22em; color: var(--muted); margin-top: 3px; }
 .selectors { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
 .selectors .field { min-width: 220px; margin-bottom: 0; }
 .selectors .btn-row { margin-bottom: 0; }
@@ -232,6 +232,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 /* ---- layout & panels ---------------------------------------------------------------------- */
 
 .layout {
+  overflow-anchor: none;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 320px;
   gap: 16px;
@@ -264,7 +265,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
 .level button { width: 34px; height: 34px; padding: 0; font-size: 18px; }
 .level input[type="number"] { text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 24px; padding: 2px 4px; height: 36px; color: var(--accent-strong); }
 .level input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 6px 0 0; accent-color: var(--accent); cursor: pointer; }
-.level-ticks { grid-column: 1 / -1; display: flex; justify-content: space-between; font-family: var(--font-display); font-size: 10px; font-weight: 600; letter-spacing: .08em; color: var(--muted); padding: 0 6px; }
+.level-ticks { grid-column: 1 / -1; display: flex; justify-content: space-between; font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); padding: 0 6px; }
 
 /* ---- career tree -------------------------------------------------------------------------- */
 
@@ -282,7 +283,7 @@ input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-o
   font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: .04em;
   color: var(--muted); text-align: center; white-space: nowrap;
 }
-.tier-label small { font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
+.tier-label small { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 button.career-btn {
   --cut: 6px;
   --fill: var(--panel-2);
@@ -297,7 +298,7 @@ button.career-btn {
 button.career-btn[data-tier="3"], button.career-btn[data-tier="4"] { font-size: 12.5px; padding: 2px 3px; }
 button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4px 0; }
 .career-btn[data-tier="1"] .node-label, .career-btn[data-tier="2"] .node-label { max-height: 100%; max-width: none; }
-.career-btn .node-req { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; color: var(--muted); }
+.career-btn .node-req { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--muted); }
 .career-btn[data-tier="1"] .node-label, .career-btn[data-tier="2"] .node-label,
 .career-btn[data-tier="1"] .node-req, .career-btn[data-tier="2"] .node-req { writing-mode: vertical-rl; transform: rotate(180deg); }
 .career-btn:hover { --frame: var(--accent); color: var(--text-strong); }
@@ -345,7 +346,7 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
   display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 8px 12px; min-width: 0;
 }
 .stat::after { content: ""; position: absolute; left: 0; top: 7px; bottom: 0; width: 2px; background: var(--edge, var(--line-2)); }
-.stat-label { font-family: var(--font-display); font-size: 10.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-label { font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stat-value { font-family: var(--font-display); font-variant-numeric: tabular-nums; line-height: 1; color: var(--text-strong); display: flex; align-items: baseline; gap: 2px; }
 .stat-value b { font-size: 26px; font-weight: 700; }
 .stat-value small { font-size: 13px; font-weight: 600; color: var(--muted); }
@@ -376,8 +377,15 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .attr .name { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-strong); line-height: 1.1; min-width: 0; }
 .attr .name small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--muted); margin-top: 2px; }
 .attr .step { width: 30px; height: 30px; padding: 0; font-size: 18px; }
-.attr .value { text-align: center; font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 22px; color: var(--text-strong); }
+.attr input.value {
+  width: 100%; height: 32px; padding: 0 2px; text-align: center;
+  font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 22px; color: var(--text-strong);
+  background: transparent; border-color: transparent;
+}
+.attr input.value:hover { border-color: var(--line-2); }
+.hint { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .attr .value.boosted { color: var(--accent-strong); }
+.attr .step { touch-action: manipulation; user-select: none; }
 
 /* ---- issues ------------------------------------------------------------------------------- */
 
@@ -389,6 +397,29 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .issues li.error::after { background: var(--danger); }
 #build-reset { margin-top: 6px; }
 
+/* ---- budget bar (sticky above the skills) -------------------------------------------------- */
+
+.budget-bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  margin: 0 0 14px; padding: 8px 12px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line-2); border-left: 3px solid var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+}
+.budget-build { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-strong); margin-right: auto; }
+.budget-item { display: grid; grid-template-columns: auto auto; column-gap: 8px; align-items: baseline; min-width: 150px; }
+.budget-label { grid-column: 1 / -1; font-family: var(--font-display); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.budget-value { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 14px; color: var(--muted); }
+.budget-value b { font-size: 22px; font-weight: 700; color: var(--text-strong); }
+.budget-left { font-size: 12.5px; color: var(--muted); text-align: right; }
+.budget-item .bar { grid-column: 1 / -1; display: block; height: 4px; margin-top: 3px; background: var(--rank-off); overflow: hidden; }
+.budget-item .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); transition: width .25s ease-out; }
+.budget-item.over .budget-value b, .budget-item.over .budget-left { color: var(--danger); font-weight: 700; }
+.budget-item.over .bar i { background: var(--danger); }
+.budget-bar:has(.over) { border-left-color: var(--danger); }
+
 /* ---- skills ------------------------------------------------------------------------------- */
 
 .skill-group { margin-bottom: 20px; }
@@ -396,7 +427,7 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .skill-group > h3::before { content: ""; width: 10px; height: 10px; align-self: center; background: var(--accent); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 .skill-group > h3::after { order: 3; }
 .skill-group .unlock { order: 2; text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 12px; font-weight: 400; }
-.skill-group .group-spent { order: 4; font-size: 11px; letter-spacing: .12em; color: var(--muted); }
+.skill-group .group-spent { order: 4; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
 .skill-group .group-spent b { font-size: 15px; color: var(--accent); margin-right: 1px; }
 .skill-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 8px; }
 
@@ -424,7 +455,7 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 }
 .skill-name:hover { color: var(--accent-strong); text-decoration-color: var(--accent); }
 .skill.selected .skill-name { color: var(--accent-strong); }
-.skill-kind { flex: none; font-family: var(--font-display); font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .16em; }
+.skill-kind { flex: none; font-family: var(--font-display); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .16em; }
 .skill[data-kind="signature"] .skill-kind { color: var(--sig); }
 .skill[data-kind="signature"] .skill-kind::before { content: "\25C6"; margin-right: 4px; font-size: 8px; vertical-align: 1px; }
 
@@ -440,28 +471,35 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .rank::before { clip-path: polygon(4.6px 0, 100% 0, calc(100% - 4.6px) 100%, 0 100%); }
 .rank:first-child { clip-path: polygon(0 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
 .rank:first-child::before { clip-path: polygon(0 0, 100% 0, calc(100% - 4.6px) 100%, 0 100%); }
-.rank:hover { --frame: var(--accent); color: var(--text-strong); }
 .rank.on { --fill: var(--accent); --frame: var(--accent-strong); color: var(--accent-ink); font-weight: 700; }
 .rank.on::before { background: linear-gradient(180deg, var(--accent-strong), var(--accent) 55%, var(--accent-dim) 160%); }
 .rank.base.on { --fill: var(--accent-dim); --frame: var(--accent-dim); color: var(--text-strong); }
-.rank.base.on::before { background: repeating-linear-gradient(135deg, var(--accent-dim) 0 4px, color-mix(in srgb, var(--accent-dim) 70%, var(--rank-off)) 4px 8px); }
+.rank.base.on::before { background: var(--accent-dim); }
+.rank.cant { color: color-mix(in srgb, var(--danger) 70%, var(--muted)); }
+.rank.cant::before { background: repeating-linear-gradient(135deg, var(--rank-off) 0 4px, color-mix(in srgb, var(--danger) 18%, var(--rank-off)) 4px 8px); }
 .rank.locked { opacity: .5; }
 .rank.invalid { --frame: var(--danger); }
-/* hover/focus preview: segments up to the pointed one light up, owned segments beyond it dim */
-.ranks:has(> .rank:hover) > .rank:not(.on):not(.rank:hover ~ .rank),
+/* Hover/focus preview: segments up to the pointed one light up; owned segments that a click would
+   remove show as empty outlines with a red frame. Hover styles only apply to real pointers, so a tap
+   on a touch screen does not leave a stuck preview. */
+@media (hover: hover) {
+  .rank:hover { --frame: var(--accent); color: var(--text-strong); }
+  .ranks:has(> .rank:hover) > .rank:not(.on):not(.rank:hover ~ .rank) { --fill: color-mix(in srgb, var(--accent) 30%, var(--rank-off)); --frame: var(--accent); color: var(--text-strong); }
+  .ranks:has(> .rank.cant:hover) > .rank:not(.on):not(.rank:hover ~ .rank) { --frame: var(--danger); }
+  .ranks:has(> .rank:hover) > .rank:hover ~ .rank.on,
+  .rank.on:not(.base):hover:not(:has(+ .rank.on)) { --frame: var(--danger); color: var(--text); }
+  .ranks:has(> .rank:hover) > .rank:hover ~ .rank.on::before,
+  .rank.on:not(.base):hover:not(:has(+ .rank.on))::before { background: var(--rank-off); }
+}
 .ranks:has(> .rank:focus-visible) > .rank:not(.on):not(.rank:focus-visible ~ .rank) { --fill: color-mix(in srgb, var(--accent) 30%, var(--rank-off)); --frame: var(--accent); color: var(--text-strong); }
-.ranks:has(> .rank:hover) > .rank:hover ~ .rank.on,
-.ranks:has(> .rank:focus-visible) > .rank:focus-visible ~ .rank.on,
-.rank.on:hover:not(:has(+ .rank.on)) { --frame: var(--line-2); color: var(--muted); }
-.ranks:has(> .rank:hover) > .rank:hover ~ .rank.on::before,
-.ranks:has(> .rank:focus-visible) > .rank:focus-visible ~ .rank.on::before,
-.rank.on:hover:not(:has(+ .rank.on))::before { background: repeating-linear-gradient(135deg, var(--accent-dim) 0 3px, var(--rank-off) 3px 6px); }
+.ranks:has(> .rank:focus-visible) > .rank:focus-visible ~ .rank.on { --frame: var(--danger); color: var(--text); }
+.ranks:has(> .rank:focus-visible) > .rank:focus-visible ~ .rank.on::before { background: var(--rank-off); }
 .skill[data-kind="signature"] .rank.on { --fill: var(--sig); --frame: var(--sig); color: var(--accent-ink); }
 .skill[data-kind="signature"] .rank.on::before { background: linear-gradient(180deg, #f4d58a, var(--sig) 60%, #8a6a24 170%); }
-.rank-readout { flex: none; min-width: 30px; text-align: right; font-family: var(--font-display); font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.rank-readout { flex: none; min-width: 32px; text-align: right; font-family: var(--font-display); font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--muted); }
 .skill.trained .rank-readout { color: var(--accent); }
 .skill[data-kind="signature"].trained .rank-readout { color: var(--sig); }
-.skill .clear { flex: none; width: 24px; min-height: 24px; height: 24px; padding: 0; font-size: 14px; --cut: 3px; color: var(--muted); }
+.skill .clear { flex: none; width: 28px; min-height: 26px; height: 26px; padding: 0; font-size: 18px; --cut: 3px; color: var(--muted); }
 .skill .clear:hover { color: var(--danger); --frame: var(--danger); }
 
 /* ---- detail panel ------------------------------------------------------------------------- */
@@ -469,7 +507,7 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .skill-detail h2 { font-size: 21px; margin-bottom: 6px; line-height: 1.1; }
 .skill-detail .meta { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; }
 .tag {
-  font-family: var(--font-display); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
   color: var(--muted); padding: 2px 7px; border: 1px solid var(--line-2); background: var(--panel-2);
 }
 .tag[data-kind="ability"] { color: var(--accent); border-color: var(--accent-dim); }
@@ -481,7 +519,7 @@ button.career-btn[data-tier="1"], button.career-btn[data-tier="2"] { padding: 4p
 .skill-detail .rank-title::before { content: ""; width: 6px; height: 6px; background: var(--accent); transform: rotate(45deg); }
 pre.desc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13.5px/1.5 var(--font-body); margin: 0 0 10px; color: var(--text); }
 .skill-detail .chips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin: 4px 0 12px; }
-.chips-label { font-family: var(--font-display); font-size: 10.5px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.chips-label { font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-family: var(--font-display); font-size: 12px; font-weight: 600; letter-spacing: .04em;
@@ -496,6 +534,11 @@ pre.desc { white-space: pre-wrap; overflow-wrap: anywhere; font: 13.5px/1.5 var(
 .skill-detail summary { cursor: pointer; color: var(--muted); font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .skill-detail summary:hover { color: var(--text); }
 .skill-detail details pre.desc { margin-top: 8px; color: var(--muted); }
+.pump-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.pump-table th { width: 28px; padding: 4px 0; text-align: left; font-family: var(--font-display); font-weight: 700; color: var(--muted); vertical-align: top; }
+.pump-table td { padding: 4px 0; color: var(--muted); border-bottom: 1px solid var(--line); }
+.pump-table tr.current th, .pump-table tr.current td { color: var(--accent-strong); }
+button.detail-close { display: none; order: 3; margin-left: 4px; width: 32px; padding: 0; font-size: 20px; }
 .skill-detail > .muted { font-size: 13px; }
 
 /* ---- dialog ------------------------------------------------------------------------------- */
@@ -520,7 +563,21 @@ dialog::backdrop { background: rgba(4, 8, 10, .7); backdrop-filter: blur(2px); }
 
 @media (max-width: 1180px) {
   .layout { grid-template-columns: 320px minmax(0, 1fr); }
-  .detail { grid-column: 1 / -1; position: static; max-height: none; }
+  /* The detail panel becomes a bottom sheet that slides up when a skill is selected. */
+  .detail {
+    --cut: 0px;
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 20;
+    max-height: min(60vh, 560px); overflow: auto;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, .55);
+    transform: translateY(105%); visibility: hidden;
+    transition: transform .22s ease-out, visibility 0s linear .22s;
+  }
+  .detail::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); }
+  body.detail-open .detail { transform: none; visibility: visible; transition: transform .22s ease-out; }
+  .detail .panel-title { position: sticky; top: -16px; z-index: 1; margin: -16px -16px 12px; padding: 12px 16px; background: var(--panel); }
+  button.detail-close { display: inline-flex; }
+  body.detail-open { padding-bottom: min(60vh, 560px); }
 }
 @media (max-width: 720px) {
   .layout { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 14px; }
@@ -531,6 +588,11 @@ dialog::backdrop { background: rgba(4, 8, 10, .7); backdrop-filter: blur(2px); }
   .io { margin-left: 0; width: 100%; }
   .io > * { flex: 1 1 auto; }
   .skill-list { grid-template-columns: minmax(0, 1fr); }
+  .budget-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; padding: 6px 10px; margin-bottom: 10px; }
+  .budget-build { grid-column: 1 / -1; font-size: 12px; }
+  .budget-item { min-width: 0; }
+  .budget-label { font-size: 11px; letter-spacing: .08em; }
+  .budget-value b { font-size: 18px; }
   .panel { --cut: 10px; padding: 12px; }
   .career-tree { --row: 36px; }
   .career-btn { font-size: 13px; }
@@ -539,7 +601,7 @@ dialog::backdrop { background: rgba(4, 8, 10, .7); backdrop-filter: blur(2px); }
   .derived { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
   .derived .stat { padding: 5px 6px 5px 8px; }
   .derived .stat-value b { font-size: 16px; }
-  .derived .stat-label { font-size: 9.5px; letter-spacing: .08em; }
+  .derived .stat-label { font-size: 11px; letter-spacing: .04em; }
   .build-tabs { padding-left: 16px; }
 }
 

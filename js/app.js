@@ -63,6 +63,42 @@ function setRank(build, skillId, rank) {
   else build.skills[skillId] = r;
 }
 
+// Attribute points: delta from the +/- buttons, or a typed total; both clamp to the budget.
+function adjustAttribute(key, delta) {
+  editBuild(b => {
+    const spent = b.attributes[key] || 0;
+    const room = attributePointBudget(b.level) - spentAttributePoints(b);
+    b.attributes[key] = Math.max(0, spent + Math.min(delta, Math.max(0, room)));
+  });
+}
+
+function setAttributeTotal(key, total) {
+  const { character, build } = current();
+  const base = baseAttributes(character.race, build.level)[key];
+  if (!Number.isFinite(total)) { render(); return; }
+  adjustAttribute(key, Math.round(total) - base - (build.attributes[key] || 0));
+}
+
+// Press-and-hold on a +/- button repeats it. Rendering replaces the button mid-hold, so the
+// repeat is stopped by a document-level pointerup, and the click that would follow is skipped.
+let holdTimer = null;
+let holding = false;
+function startHold(e, step) {
+  if (e.button !== 0) return;
+  stopHold();
+  holdTimer = setTimeout(function repeat() {
+    holding = true;
+    step();
+    holdTimer = setTimeout(repeat, 70);
+  }, 400);
+}
+function stopHold() {
+  clearTimeout(holdTimer);
+  holdTimer = null;
+  setTimeout(() => { holding = false; }, 0); // after the click event of this release
+}
+for (const type of ['pointerup', 'pointercancel', 'blur']) window.addEventListener(type, stopHold);
+
 // Choosing a class keeps skills of classes still on the path and drops the rest.
 function setCareer(build, classId) {
   build.career = classId;
@@ -81,6 +117,7 @@ function render() {
   renderCharacterSelect(character);
   renderBuildTabs(character, build);
   renderSheet(character, build);
+  renderBudgetBar(build);
   renderSkills(build, character);
   renderDetail(build, character);
   if (focusKey) {
@@ -99,6 +136,7 @@ function renderCharacterSelect(character) {
 function renderBuildTabs(character, build) {
   $('#build-tabs').replaceChildren(...character.builds.map(b => el('button', {
     type: 'button', role: 'tab', class: 'tab', 'aria-selected': String(b.id === build.id), 'data-focus-key': `tab:${b.id}`,
+    'aria-label': `${b.name}, level ${b.level} ${GAME.classes[b.career]?.name ?? ''}`,
     onclick: () => { store.selectBuild(b.id); selected = null; },
   }, el('span', { class: 'tab-name' }, b.name),
      el('span', { class: 'tab-meta' }, `L${b.level} ${GAME.classes[b.career]?.name ?? ''}`))));
@@ -162,14 +200,25 @@ function renderSheet(character, build) {
   const base = baseAttributes(character.race, build.level);
   $('#attributes').replaceChildren(...ATTRS.map(a => {
     const spent = build.attributes[a.key] || 0;
+    const room = Math.max(0, attrTotal - attrSpent);
     return el('div', { class: 'attr', 'data-attr': a.key },
       el('div', { class: 'name' }, a.name, el('small', {}, `${base[a.key]} base + ${spent} · ${a.hint}`)),
-      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr-:${a.key}`, 'aria-label': `Remove ${a.name} point`, disabled: spent <= 0,
-        onclick: e => editBuild(b => { b.attributes[a.key] = Math.max(0, spent - (e.shiftKey ? 10 : 1)); }) }, '−'),
-      el('span', { class: `value${spent > 0 ? ' boosted' : ''}` }, String(base[a.key] + spent)),
-      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr+:${a.key}`, 'aria-label': `Add ${a.name} point`, disabled: attrSpent >= attrTotal,
-        onclick: e => editBuild(b => { b.attributes[a.key] = spent + Math.min(e.shiftKey ? 10 : 1, attrTotal - attrSpent); }) }, '+'));
+      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr-:${a.key}`, 'aria-label': `Remove ${a.name} point`,
+        title: 'Shift-click or hold to remove faster', disabled: spent <= 0,
+        onclick: e => { if (!holding) adjustAttribute(a.key, e.shiftKey ? -10 : -1); },
+        onpointerdown: e => startHold(e, () => adjustAttribute(a.key, -1)) }, '−'),
+      el('input', {
+        type: 'number', class: `value${spent > 0 ? ' boosted' : ''}`, inputmode: 'numeric',
+        min: base[a.key], max: base[a.key] + spent + room, value: base[a.key] + spent,
+        'aria-label': `${a.name} total`, 'data-focus-key': `attrv:${a.key}`,
+        onchange: e => setAttributeTotal(a.key, Number(e.target.value)),
+      }),
+      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr+:${a.key}`, 'aria-label': `Add ${a.name} point`,
+        title: 'Shift-click or hold to add faster', disabled: room <= 0,
+        onclick: e => { if (!holding) adjustAttribute(a.key, e.shiftKey ? 10 : 1); },
+        onpointerdown: e => startHold(e, () => adjustAttribute(a.key, 1)) }, '+'));
   }));
+  $('#attr-hint').hidden = attrTotal === 0;
 
   const d = derivedStats(character.race, build.level, build.attributes);
   const fmt = n => (Math.round(n * 100) / 100).toLocaleString();
@@ -231,7 +280,10 @@ function renderCareerTree(build) {
       return el('button', {
         type: 'button', class: 'career-btn', 'aria-pressed': String(onPath), 'data-focus-key': `class:${id}`,
         style: `grid-column:${c.tier};grid-row:${start + 1} / span ${span}`,
-        title: locked ? `Requires level ${c.level}` : (c.parent ? `From ${GAME.classes[c.parent].name}` : ''),
+        title: locked ? `Requires level ${c.level}`
+          : id === build.career && c.parent ? `Active class · click to go back to ${GAME.classes[c.parent].name}`
+          : (c.parent ? `From ${GAME.classes[c.parent].name}` : ''),
+        'aria-label': `${c.name}, level ${c.level}${c.parent ? `, from ${GAME.classes[c.parent].name}` : ''}${locked ? ', locked' : ''}${id === build.career ? ', active class' : ''}`,
         disabled: locked,
         'data-offpath': parentOk ? null : 'true',
         'data-tier': c.tier,
@@ -243,6 +295,23 @@ function renderCareerTree(build) {
       el('span', { class: 'node-label' }, c.name),
       locked ? el('span', { class: 'node-req' }, `L${c.level}`) : null);
     }));
+}
+
+// Sticky readout above the skills, so the budget stays in view while pumping ranks.
+function renderBudgetBar(build) {
+  const item = (label, spent, total) => {
+    const over = spent > total;
+    const pct = total > 0 ? Math.min(100, (spent / total) * 100) : (spent > 0 ? 100 : 0);
+    return el('div', { class: `budget-item${over ? ' over' : ''}` },
+      el('span', { class: 'budget-label' }, label),
+      el('span', { class: 'budget-value' }, el('b', {}, String(spent)), ` / ${total}`),
+      el('span', { class: 'budget-left' }, over ? `${spent - total} over` : `${total - spent} left`),
+      el('span', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: `width:${pct}%` })));
+  };
+  $('#budget-bar').replaceChildren(
+    el('span', { class: 'budget-build' }, `L${build.level} ${GAME.classes[build.career]?.name ?? ''}`),
+    item('Skill points', spentSkillPoints(build), skillPointBudget(build.level)),
+    item('Attributes', spentAttributePoints(build), attributePointBudget(build.level)));
 }
 
 function renderSkills(build, character) {
@@ -266,17 +335,20 @@ function skillCard(skillId, build) {
   const min = minRank(skillId);
   const isSel = selected?.skillId === skillId;
   const kind = skillKind(s);
+  const left = skillPointBudget(build.level) - spentSkillPoints(build);
   return el('article', { class: `skill${isSel ? ' selected' : ''}${rank > min ? ' trained' : ''}`, 'data-kind': kind.toLowerCase() },
     el('div', { class: 'skill-head' },
       el('button', { type: 'button', class: 'skill-name plain', onclick: () => select(skillId, Math.max(1, rank)) }, displayName(s)),
       el('span', { class: 'skill-kind' }, kind)),
-    el('div', { class: 'ranks', role: 'group', 'aria-label': `${displayName(s)} rank` },
+    el('div', { class: 'ranks', role: 'group', 'aria-label': `${displayName(s)} rank, ${rank} of ${s.maxRank}` },
       ...Array.from({ length: s.maxRank }, (_, i) => {
         const r = i + 1;
+        // A rank above the current one that the remaining points cannot pay for.
+        const cant = r > rank && rankCost(r) - rankCost(rank) > left;
         return el('button', {
-          type: 'button', class: `rank${r <= rank ? ' on' : ''}${r <= min ? ' base' : ''}`, 'data-focus-key': `rank:${skillId}:${r}`,
+          type: 'button', class: `rank${r <= rank ? ' on' : ''}${r <= min ? ' base' : ''}${cant ? ' cant' : ''}`, 'data-focus-key': `rank:${skillId}:${r}`,
           'aria-pressed': String(r <= rank),
-          title: `Rank ${r} · ${rankCost(r)} point(s) total`,
+          'aria-label': `Rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
           onclick: () => {
             editBuild(b => setRank(b, skillId, r === rank ? r - 1 : r));
             select(skillId, r);
@@ -292,7 +364,13 @@ function skillCard(skillId, build) {
 
 function select(skillId, rank) {
   selected = { skillId, rank };
+  setDetailOpen(true);
   render();
+}
+
+// Below the wide layout the detail panel is a bottom sheet, opened by selecting a skill.
+function setDetailOpen(open) {
+  document.body.classList.toggle('detail-open', open);
 }
 
 let previewTimer;
@@ -344,8 +422,29 @@ function renderDetail(build, character, override) {
 
   const step = owned >= rank ? `Owned (rank ${owned}).` : `Rank ${rank} costs ${rank} point(s); ${rankCost(rank) - rankCost(owned)} more from rank ${owned}.`;
   kids.push(el('p', { class: `cost${owned >= rank ? ' owned' : ''}` }, step));
-  kids.push(el('details', {}, el('summary', {}, 'Skill overview'), el('pre', { class: 'desc' }, s.desc)));
+  kids.push(el('details', {}, el('summary', {}, 'Skill overview'), ...overview(s.desc, rank)));
   box.replaceChildren(...kids);
+}
+
+// The client's skill overview ends with "Pump N: effect" lines; show those as a table with the
+// viewed rank highlighted, and anything else as text.
+function overview(text, rank) {
+  const lines = text.split('\n');
+  const pumps = [];
+  const prose = [];
+  for (const line of lines) {
+    const m = line.match(/^Pump (\d+):\s*(.*)$/);
+    if (m) pumps.push([Number(m[1]), m[2]]);
+    else prose.push(line);
+  }
+  const out = [];
+  const intro = prose.join('\n').trim();
+  if (intro) out.push(el('pre', { class: 'desc' }, intro));
+  if (pumps.length) {
+    out.push(el('table', { class: 'pump-table' }, el('tbody', {}, ...pumps.map(([n, effect]) =>
+      el('tr', { class: n === rank ? 'current' : null }, el('th', { scope: 'row' }, String(n)), el('td', {}, effect))))));
+  }
+  return out;
 }
 
 // ---- events -------------------------------------------------------------------------------
@@ -409,6 +508,17 @@ function wire() {
   };
   $('#import-build').addEventListener('click', () => doImport(false));
   $('#import-char').addEventListener('click', () => doImport(true));
+
+  // Detail bottom sheet (narrow layouts).
+  $('#detail-close').addEventListener('click', () => setDetailOpen(false));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('detail-open') && !$('#share-dialog').open) setDetailOpen(false);
+  });
+
+  // Restore is a label around a hidden file input; make it work from the keyboard too.
+  $('#restore-btn').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#backup-import').click(); }
+  });
 
   // Backup / restore of everything.
   $('#backup-export').addEventListener('click', () => {
