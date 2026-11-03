@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AFSPlanner</title>
+  <meta name="description" content="Character and career planner for Tabula Rasa: plan skills, attributes and careers for multiple characters and builds.">
+  <meta name="theme-color" content="#0a0e12">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" aria-label="AFSPlanner">
+      <span class="brand-mark" aria-hidden="true">AFS</span>
+      <span class="brand-text">Planner<small>Career &amp; skill planner</small></span>
+    </div>
+    <div class="selectors">
+      <label class="field">
+        <span>Character</span>
+        <select id="character-select" aria-label="Character"></select>
+      </label>
+      <div class="btn-row">
+        <button id="char-new" type="button" title="New character">New</button>
+        <button id="char-dup" type="button" title="Duplicate character">Duplicate</button>
+        <button id="char-del" type="button" class="danger" title="Delete character">Delete</button>
+      </div>
+    </div>
+    <div class="btn-row io">
+      <button id="share-open" type="button" class="primary">Share / import</button>
+      <button id="backup-export" type="button">Backup</button>
+      <label class="file-btn">Restore<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
+    </div>
+  </header>
+
+  <p id="storage-warning" class="warning" hidden>Browser storage is unavailable, so plans will be lost when you close this tab. Use Backup to save them.</p>
+
+  <nav class="build-tabs" aria-label="Builds">
+    <span class="tabs-label" aria-hidden="true">Builds</span>
+    <div id="build-tabs" class="tabs" role="tablist"></div>
+    <button id="build-new" type="button" class="ghost tab-add">+ Build</button>
+  </nav>
+
+  <main class="layout">
+    <section class="panel sheet" aria-labelledby="sheet-title">
+      <h2 id="sheet-title" class="panel-title">Character</h2>
+      <label class="field"><span>Character name</span><input id="char-name" type="text" maxlength="60" autocomplete="off"></label>
+      <label class="field"><span>Race</span><select id="race-select"></select></label>
+      <div class="field-row">
+        <label class="field grow"><span>Build name</span><input id="build-name" type="text" maxlength="60" autocomplete="off"></label>
+        <div class="btn-row end">
+          <button id="build-dup" type="button" title="Duplicate build">Copy</button>
+          <button id="build-del" type="button" class="danger" title="Delete build">Delete</button>
+        </div>
+      </div>
+
+      <div class="level">
+        <span class="label">Level</span>
+        <button id="level-down" type="button" aria-label="Level down">−</button>
+        <input id="level-input" type="number" min="1" max="50" inputmode="numeric" aria-label="Level">
+        <button id="level-up" type="button" aria-label="Level up">+</button>
+        <input id="level-range" type="range" min="1" max="50" aria-label="Level slider">
+        <div class="level-ticks" aria-hidden="true"><span>1</span><span>5</span><span>15</span><span>30</span><span>50</span></div>
+      </div>
+
+      <h3>Career</h3>
+      <div id="career-tree" class="career-tree"></div>
+
+      <h3>Points</h3>
+      <div id="points" class="points"></div>
+
+      <h3>Attributes</h3>
+      <div id="attributes" class="attributes"></div>
+      <div id="derived" class="derived"></div>
+
+      <h3>Notes</h3>
+      <textarea id="build-notes" rows="4" maxlength="2000" placeholder="Notes for this build"></textarea>
+
+      <ul id="issues" class="issues" aria-live="polite"></ul>
+      <button id="build-reset" type="button" class="danger ghost">Reset build</button>
+    </section>
+
+    <section class="skills" aria-labelledby="skills-title">
+      <h2 id="skills-title" class="sr-only">Skills</h2>
+      <div id="skill-groups"></div>
+    </section>
+
+    <aside class="panel detail" aria-live="polite">
+      <h2 class="panel-title">Skill detail</h2>
+      <div id="skill-detail" class="skill-detail"><p class="muted">Select a skill rank to see its details.</p></div>
+    </aside>
+  </main>
+
+  <dialog id="share-dialog">
+    <form method="dialog" class="dialog-body">
+      <h2 class="panel-title">Share or import a build</h2>
+      <label class="field"><span>Build code for the current build</span>
+        <textarea id="share-code" rows="3" readonly></textarea></label>
+      <div class="btn-row"><button id="share-copy" type="button" class="primary">Copy code</button><button id="share-link" type="button">Copy link</button></div>
+      <label class="field"><span>Paste a build code to import</span>
+        <textarea id="import-code" rows="3"></textarea></label>
+      <div class="btn-row">
+        <button id="import-build" type="button">Add to this character</button>
+        <button id="import-char" type="button">Import as new character</button>
+      </div>
+      <p id="share-msg" class="muted" role="status"></p>
+      <div class="btn-row end"><button value="close">Close</button></div>
+    </form>
+  </dialog>
+
+  <footer class="footer">
+    <p>Fan-made planner for Tabula Rasa. Not affiliated with NCsoft or Destination Games. Game names and mechanics belong to their owners.</p>
+    <p id="data-source" class="muted"></p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
