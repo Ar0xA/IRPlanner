@@ -17,21 +17,23 @@
       <span class="brand-mark" aria-hidden="true">IR</span>
       <span class="brand-text">Planner<small>Infinite Rasa career planner</small></span>
     </div>
-    <div class="selectors">
-      <label class="field">
-        <span>Character</span>
-        <select id="character-select" aria-label="Character"></select>
-      </label>
-      <div class="btn-row">
-        <button id="char-new" type="button" title="New character">New</button>
-        <button id="char-dup" type="button" title="Duplicate character">Duplicate</button>
-        <button id="char-del" type="button" class="danger" title="Delete character">Delete</button>
-      </div>
-    </div>
-    <div class="btn-row io">
-      <button id="share-open" type="button" class="primary">Share / import</button>
-      <button id="backup-export" type="button">Backup</button>
-      <label id="restore-btn" class="file-btn" role="button" tabindex="0">Restore<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
+    <label class="field char-field">
+      <span>Character</span>
+      <select id="character-select" aria-label="Character"></select>
+    </label>
+    <div class="top-actions">
+      <button id="share-open" type="button" class="primary">Share</button>
+      <details id="more-menu" class="menu">
+        <summary class="menu-btn" aria-label="More actions" title="More actions">···</summary>
+        <div class="menu-list">
+          <button id="char-new" type="button">New character</button>
+          <button id="char-dup" type="button">Duplicate character</button>
+          <button id="char-del" type="button" class="danger">Delete character</button>
+          <hr>
+          <button id="backup-export" type="button">Backup all plans</button>
+          <label id="restore-btn" class="file-btn" role="button" tabindex="0">Restore backup<input id="backup-import" type="file" accept="application/json,.json" hidden></label>
+        </div>
+      </details>
     </div>
   </header>
 
@@ -40,57 +42,89 @@
   <nav class="build-tabs" aria-label="Builds">
     <span class="tabs-label" aria-hidden="true">Builds</span>
     <div id="build-tabs" class="tabs" role="tablist"></div>
-    <button id="build-new" type="button" class="ghost tab-add">+ Build</button>
+    <button id="build-new" type="button" class="ghost tab-add" aria-label="Add build">+ Build</button>
   </nav>
 
   <main class="layout">
-    <section class="panel sheet" aria-labelledby="sheet-title">
-      <h2 id="sheet-title" class="panel-title">Character</h2>
-      <label class="field"><span>Character name</span><input id="char-name" type="text" maxlength="60" autocomplete="off"></label>
-      <label class="field"><span>Race</span><select id="race-select"></select></label>
-      <div class="field-row">
-        <label class="field grow"><span>Build name</span><input id="build-name" type="text" maxlength="60" autocomplete="off"></label>
-        <div class="btn-row end">
-          <button id="build-dup" type="button" title="Duplicate build">Copy</button>
-          <button id="build-del" type="button" class="danger" title="Delete build">Delete</button>
+    <div class="panel sheet">
+      <section class="sheet-sec sheet-build" aria-labelledby="build-title">
+        <h2 id="build-title" class="sr-only">Build</h2>
+
+        <div class="careerbox">
+          <span class="lbl">Career path</span>
+          <div id="career-strip" class="career-strip" role="group" aria-label="Class path"></div>
+          <button id="career-toggle" type="button" class="career-toggle" aria-expanded="false" aria-controls="career-tree">Change class path</button>
+          <div id="career-tree" class="career-tree" role="group" aria-label="Career tree"></div>
+          <p id="career-path" class="career-path"></p>
         </div>
-      </div>
 
-      <div class="level">
-        <span class="label">Level</span>
-        <button id="level-down" type="button" aria-label="Level down">−</button>
-        <input id="level-input" type="number" min="1" max="50" inputmode="numeric" aria-label="Level">
-        <button id="level-up" type="button" aria-label="Level up">+</button>
-        <input id="level-range" type="range" min="1" max="50" aria-label="Level slider">
-        <div class="level-ticks" aria-hidden="true"><span>1</span><span>5</span><span>15</span><span>30</span><span>50</span></div>
-      </div>
+        <div class="build-sum">
+          <span id="build-sum-level" class="lbl"></span>
+          <span id="build-sum-class" class="disp"></span>
+        </div>
+        <label class="field race-field"><span>Race</span><select id="race-select"></select></label>
+        <div class="level-field">
+          <span class="lbl" id="level-label">Level</span>
+          <div class="level-stepper">
+            <button id="level-down" type="button" aria-label="Level down">−</button>
+            <input id="level-input" type="number" min="1" max="50" inputmode="numeric" aria-labelledby="level-label">
+            <button id="level-up" type="button" aria-label="Level up">+</button>
+          </div>
+        </div>
+        <div class="level-range">
+          <input id="level-range" type="range" min="1" max="50" aria-label="Level slider">
+          <div class="level-ticks" aria-hidden="true"><span>1</span><span>5</span><span>15</span><span>30</span><span>50</span></div>
+        </div>
+        <label class="field cname"><span>Character name</span><input id="char-name" type="text" maxlength="60" autocomplete="off"></label>
+        <div class="field-row bname">
+          <label class="field grow"><span>Build name</span><input id="build-name" type="text" maxlength="60" autocomplete="off"></label>
+          <div class="btn-row end">
+            <button id="build-dup" type="button" title="Duplicate build">Copy</button>
+            <button id="build-del" type="button" class="danger" title="Delete build">Delete</button>
+          </div>
+        </div>
+        <ul id="issues" class="issues" aria-live="polite"></ul>
+      </section>
 
-      <h3>Career</h3>
-      <div id="career-tree" class="career-tree"></div>
+      <section class="sheet-sec sheet-points" aria-label="Points">
+        <div id="points" class="points"></div>
+        <p id="xp-line" class="hint"></p>
+      </section>
 
-      <h3>Points</h3>
-      <div id="points" class="points"></div>
+      <section class="sheet-sec sheet-attrs" aria-labelledby="attrs-title">
+        <h2 id="attrs-title" class="sec-title">Attributes</h2>
+        <details id="attrs-sec" class="collapsible" open>
+          <summary class="col-head">
+            <span class="disp">Attributes</span>
+            <span id="attrs-summary" class="col-sum"></span>
+          </summary>
+          <div class="col-body">
+            <div id="attributes" class="attributes"></div>
+            <p id="attr-hint" class="hint">Shift-click or hold − / + to step faster, or type a total.</p>
+          </div>
+        </details>
+      </section>
 
-      <h3>Attributes</h3>
-      <div id="attributes" class="attributes"></div>
-      <p id="attr-hint" class="hint">Shift-click or hold − / + to step faster, or type a total.</p>
-      <div id="derived" class="derived"></div>
+      <section class="sheet-sec sheet-more" aria-labelledby="stats-title">
+        <h2 id="stats-title" class="sec-title">Stats</h2>
+        <div id="derived" class="derived"></div>
+        <label class="field notes-field"><span>Notes</span><textarea id="build-notes" rows="4" maxlength="2000" placeholder="Notes for this build"></textarea></label>
+        <button id="build-reset" type="button" class="danger ghost">Reset build</button>
+      </section>
+    </div>
 
-      <h3>Notes</h3>
-      <textarea id="build-notes" rows="4" maxlength="2000" placeholder="Notes for this build"></textarea>
-
-      <ul id="issues" class="issues" aria-live="polite"></ul>
-      <button id="build-reset" type="button" class="danger ghost">Reset build</button>
-    </section>
-
-    <section class="skills" aria-labelledby="skills-title">
-      <h2 id="skills-title" class="sr-only">Skills</h2>
+    <div class="skills">
       <div id="budget-bar" class="budget-bar" role="status" aria-live="polite"></div>
-      <div id="skill-groups"></div>
-    </section>
+      <section id="skill-groups" class="skill-groups" aria-labelledby="skills-title">
+        <h2 id="skills-title" class="sr-only">Skills</h2>
+      </section>
+    </div>
 
-    <aside class="panel detail" aria-live="polite">
-      <h2 class="panel-title">Skill detail <button id="detail-close" type="button" class="ghost detail-close" aria-label="Close skill detail">×</button></h2>
+    <aside class="panel detail" aria-label="Skill detail" aria-live="polite">
+      <div class="detail-bar">
+        <span class="lbl">Skill detail</span>
+        <button id="detail-close" type="button" class="ghost detail-close" aria-label="Close skill detail">×</button>
+      </div>
       <div id="skill-detail" class="skill-detail"><p class="muted">Select a skill rank to see its details.</p></div>
     </aside>
   </main>

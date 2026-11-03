@@ -20,18 +20,23 @@
 | Rank cost (rank N costs N points) | Client bytecode: `client/ui/skillsabilitieswindow.pyo`, `OnPlus` |
 | Ability tooltip numbers (damage, range, timings) | Client bytecode: the ability classes' `GetAbilityDataDict` (see `tools/`) |
 | Skill point budget, attribute points, race growth, derived stats | Server-side rules, which the client never had. These follow the [Rasa.NET](https://github.com/InfiniteRasa/Rasa.NET) server: `ManifestationManager.cs` |
+| Skill, per-rank and class icons | Client UI textures in `data/*.glm`, chosen the way the skills window does (`gameuiutil.GetSkillIcon`, `GetAbilityIcon`, `LoadCharacterClassIcon`) |
 
-The generated data is in `js/data/gamedata.js` and the server rules are in `js/rules.js`, with a source note on each rule.
+The generated data is in `js/data/gamedata.js`, the icons are in `img/`, and the server rules are in `js/rules.js`, with a source note on each rule.
 
-## Regenerating the game data
+## Regenerating the game data and icons
 
-You need Python 3.9 or later; Python 2.4 is not required. `tools/pyo24.py` reads the client's Python 2.4 bytecode directly.
+You need Python 3.9 or later; Python 2.4 is not required. `tools/pyo24.py` reads the client's Python 2.4 bytecode directly. The icon script also needs Pillow (`pip install Pillow`).
 
 ```bash
 python -I tools/build_data.py "C:/path/to/Tabula Rasa 1.16.5.0"
 ```
 
-The script only reads the client files and never runs them.
+```bash
+python -I tools/extract_icons.py "C:/path/to/Tabula Rasa 1.16.5.0" img --format webp --no-sheet
+```
+
+The scripts only read the client files and never run them.
 
 ## Running locally
 
@@ -62,8 +67,8 @@ Made by [Ar0xA](https://github.com/Ar0xA). The code is under the [MIT License](L
 
 If you do, a credit and link back to this repo (https://github.com/Ar0xA/IRPlanner) is appreciated. Keeping the "Made by Ar0xA" line in the footer is the easiest way.
 
-The license covers the planner's code and docs only, not Tabula Rasa game content.
+The license covers the planner's code and docs only, not Tabula Rasa game content (the text in `js/data/gamedata.js` and the icons in `img/`).
 
 ## Disclaimer
 
-This is a fan-made tool. It is not affiliated with NCsoft or Destination Games. Tabula Rasa and its game text belong to their respective owners.
+This is a fan-made tool. It is not affiliated with NCsoft or Destination Games. Tabula Rasa, its game text and its icons belong to their respective owners.

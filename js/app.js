@@ -26,8 +26,21 @@ const ATTRS = [
   { key: 'mind', name: 'Mind', hint: 'Power, Logos damage' },
   { key: 'spirit', name: 'Spirit', hint: 'Regeneration, crits' },
 ];
+const ROMAN = ['', 'I', 'II', 'III', 'IV'];
 
+// Icons extracted from the client (see tools/extract_icons.py). All paths stay relative so the
+// site works under a sub-path on GitHub Pages.
+const classIcon = id => `img/classes/${id}.webp`;
+const skillIcon = (id, rank) => rank > 0 ? `img/skills/ranks/${id}_${rank}.webp` : `img/skills/${id}.webp`;
+const icon = (src, size, cls) => el('img', { src, width: size, height: size, alt: '', loading: 'lazy', decoding: 'async', class: cls });
+
+// Session-only UI state (not persisted): the viewed skill rank, which collapsibles are closed,
+// and whether the phone layout shows the full career tree.
 let selected = null; // { skillId, rank }
+const collapsed = new Set(); // 'tier:<classId>' | 'attrs'
+let careerTreeOpen = false;
+const phoneMq = matchMedia('(max-width: 719px)');
+const isPhone = () => phoneMq.matches;
 
 // ---- state helpers --------------------------------------------------------------------------
 
@@ -106,6 +119,17 @@ function setCareer(build, classId) {
   for (const id of Object.keys(build.skills)) if (!allowed.has(Number(id))) delete build.skills[id];
 }
 
+// Skills in the order the skill panels show them: class by class down the path.
+function visibleSkills(build) {
+  return lineage(build.career).flatMap(classId =>
+    Object.keys(GAME.skills).map(Number).filter(id => GAME.skills[id].class === classId));
+}
+
+function raceName(raceKey) {
+  const id = Object.keys(GAME.races).find(k => GAME.races[k].key === raceKey);
+  return GAME.races[id]?.name ?? raceKey;
+}
+
 // ---- rendering -----------------------------------------------------------------------------
 
 function render() {
@@ -118,7 +142,7 @@ function render() {
   renderBuildTabs(character, build);
   renderSheet(character, build);
   renderBudgetBar(build);
-  renderSkills(build, character);
+  renderSkills(build);
   renderDetail(build, character);
   if (focusKey) {
     const target = document.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`);
@@ -129,7 +153,7 @@ function render() {
 function renderCharacterSelect(character) {
   const sel = $('#character-select');
   sel.replaceChildren(...store.characters().map(c =>
-    el('option', { value: c.id, selected: c.id === character.id }, `${c.name} (${GAME.races[raceId(c.race)]?.name ?? c.race})`)));
+    el('option', { value: c.id, selected: c.id === character.id }, `${c.name} · ${raceName(c.race)}`)));
   $('#char-del').disabled = store.characters().length <= 1;
 }
 
@@ -141,10 +165,6 @@ function renderBuildTabs(character, build) {
   }, el('span', { class: 'tab-name' }, b.name),
      el('span', { class: 'tab-meta' }, `L${b.level} ${GAME.classes[b.career]?.name ?? ''}`))));
   $('#build-del').disabled = character.builds.length <= 1;
-}
-
-function raceId(raceKey) {
-  return Object.keys(GAME.races).find(id => GAME.races[id].key === raceKey);
 }
 
 function syncInput(input, value) {
@@ -168,83 +188,88 @@ function renderSheet(character, build) {
   $('#level-range').value = build.level;
   $('#level-down').disabled = build.level <= 1;
   $('#level-up').disabled = build.level >= MAX_LEVEL;
+  $('#build-sum-level').textContent = `Level ${build.level} · ${raceName(character.race)}`;
+  $('#build-sum-class').textContent = GAME.classes[build.career]?.name ?? '';
 
-  renderCareerTree(build);
+  renderCareer(build);
 
   const skillTotal = skillPointBudget(build.level);
   const skillSpent = spentSkillPoints(build);
   const attrTotal = attributePointBudget(build.level);
   const attrSpent = spentAttributePoints(build);
-  const xp = GAME.xp[build.level - 1];
-  // Budget readout: label, spent / total, a fill bar and the remainder. Over budget flips the tile red.
+  // Budget readout: label, what is left, used of total, and a fill bar. Over budget flips it red.
   const budget = (label, spent, total) => {
     const over = spent > total;
     const pct = total > 0 ? Math.min(100, (spent / total) * 100) : (spent > 0 ? 100 : 0);
     return el('div', { class: `stat budget${over ? ' over' : ''}`, role: 'group', 'aria-label': label },
       el('span', { class: 'stat-label' }, label),
-      el('span', { class: 'stat-value' }, el('b', {}, String(spent)), el('small', {}, ` / ${total}`)),
-      el('span', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: `width:${pct}%` })),
-      el('span', { class: 'stat-sub' }, over ? `${spent - total} over budget` : `${total - spent} left`));
+      el('span', { class: 'stat-value' }, el('b', {}, String(Math.abs(total - spent))), el('small', {}, over ? 'over' : 'left')),
+      el('span', { class: 'stat-sub' }, `${spent} used of ${total}`),
+      el('span', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: `width:${pct}%` })));
   };
   $('#points').replaceChildren(
-    budget('Skill points', skillSpent, skillTotal),
-    budget('Attribute points', attrSpent, attrTotal),
-    el('div', { class: 'stat xp' },
-      el('span', { class: 'stat-label' }, 'Experience for level'),
-      el('span', { class: 'stat-value' }, el('b', {}, xp.toLocaleString()))),
-  );
-  const row = (label, value, unit) => el('div', { class: 'stat' },
-    el('span', { class: 'stat-label' }, label),
-    el('span', { class: 'stat-value' }, el('b', {}, String(value)), unit ? el('small', {}, unit) : null));
+    budget('Training points', skillSpent, skillTotal),
+    budget('Attribute points', attrSpent, attrTotal));
+  $('#xp-line').textContent = `Experience for level ${build.level}: ${GAME.xp[build.level - 1].toLocaleString()}`;
 
+  // Attributes: −10 / − / typed total / + / +10 per attribute; shift-click or hold ± to go faster.
   const base = baseAttributes(character.race, build.level);
+  const room = Math.max(0, attrTotal - attrSpent);
   $('#attributes').replaceChildren(...ATTRS.map(a => {
     const spent = build.attributes[a.key] || 0;
-    const room = Math.max(0, attrTotal - attrSpent);
+    const step = (delta, label, key, hold) => el('button', {
+      type: 'button', class: `step${Math.abs(delta) > 1 ? ' big' : ''}`, 'data-focus-key': `attr${key}:${a.key}`,
+      'aria-label': `${delta < 0 ? 'Remove' : 'Add'} ${Math.abs(delta)} ${a.name} point${Math.abs(delta) > 1 ? 's' : ''}`,
+      title: hold ? 'Shift-click or hold to step faster' : null,
+      disabled: delta < 0 ? spent <= 0 : room <= 0,
+      onclick: e => { if (!holding) adjustAttribute(a.key, e.shiftKey && Math.abs(delta) === 1 ? delta * 10 : delta); },
+      onpointerdown: hold ? e => startHold(e, () => adjustAttribute(a.key, delta)) : null,
+    }, label);
     return el('div', { class: 'attr', 'data-attr': a.key },
       el('div', { class: 'name' }, a.name, el('small', {}, `${base[a.key]} base + ${spent} · ${a.hint}`)),
-      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr-:${a.key}`, 'aria-label': `Remove ${a.name} point`,
-        title: 'Shift-click or hold to remove faster', disabled: spent <= 0,
-        onclick: e => { if (!holding) adjustAttribute(a.key, e.shiftKey ? -10 : -1); },
-        onpointerdown: e => startHold(e, () => adjustAttribute(a.key, -1)) }, '−'),
-      el('input', {
-        type: 'number', class: `value${spent > 0 ? ' boosted' : ''}`, inputmode: 'numeric',
-        min: base[a.key], max: base[a.key] + spent + room, value: base[a.key] + spent,
-        'aria-label': `${a.name} total`, 'data-focus-key': `attrv:${a.key}`,
-        onchange: e => setAttributeTotal(a.key, Number(e.target.value)),
-      }),
-      el('button', { type: 'button', class: 'step', 'data-focus-key': `attr+:${a.key}`, 'aria-label': `Add ${a.name} point`,
-        title: 'Shift-click or hold to add faster', disabled: room <= 0,
-        onclick: e => { if (!holding) adjustAttribute(a.key, e.shiftKey ? 10 : 1); },
-        onpointerdown: e => startHold(e, () => adjustAttribute(a.key, 1)) }, '+'));
+      el('div', { class: 'attr-ctl' },
+        step(-10, '−10', '-10'),
+        step(-1, '−', '-', true),
+        el('input', {
+          type: 'number', class: `value${spent > 0 ? ' boosted' : ''}`, inputmode: 'numeric',
+          min: base[a.key], max: base[a.key] + spent + room, value: base[a.key] + spent,
+          'aria-label': `${a.name} total`, 'data-focus-key': `attrv:${a.key}`,
+          onchange: e => setAttributeTotal(a.key, Number(e.target.value)),
+        }),
+        step(1, '+', '+', true),
+        step(10, '+10', '+10')));
   }));
   $('#attr-hint').hidden = attrTotal === 0;
-
   const d = derivedStats(character.race, build.level, build.attributes);
+  $('#attrs-summary').textContent = `Body ${d.body} · Mind ${d.mind} · Spirit ${d.spirit}`;
+  // Attributes collapse only on the phone layout; wider layouts always show them.
+  $('#attrs-sec').open = !isPhone() || !collapsed.has('attrs');
+
   const fmt = n => (Math.round(n * 100) / 100).toLocaleString();
+  const stat = (label, value, unit) => el('div', { class: 'stat' },
+    el('span', { class: 'stat-label' }, label),
+    el('span', { class: 'stat-value' }, el('b', {}, String(value)), unit ? el('small', {}, unit) : null));
   $('#derived').replaceChildren(
-    row('Health', d.health.toLocaleString()),
-    row('Power', d.power.toLocaleString()),
-    row('Regen', `${d.regen}%`, ` ${d.regenPerSecond}/s`),
-    row('Armor', fmt(d.armorBonus), '%'),
-    row('Logos dmg', fmt(d.logosBonus), '%'),
-    row('Crit', fmt(d.critBonus), '%'),
-  );
+    stat('Health', d.health.toLocaleString()),
+    stat('Power', d.power.toLocaleString()),
+    stat('Regen', `${d.regen}%`, ` ${d.regenPerSecond}/s`),
+    stat('Armor', fmt(d.armorBonus), '%'),
+    stat('Logos dmg', fmt(d.logosBonus), '%'),
+    stat('Crit', fmt(d.critBonus), '%'));
 
   const issues = validate(build, character.race);
   $('#issues').replaceChildren(...issues.map(i => el('li', { class: i.level }, i.text)));
 }
 
-// The career tree is a binary tree (1 → 2 → 4 → 8 classes). It is laid out on a CSS grid with one
-// column per tier and one row per leaf; a class spans the rows of its descendants, so its node sits
-// centred between its children and connectors can be drawn with plain borders.
-function renderCareerTree(build) {
-  const path = new Set(lineage(build.career));
-  const roots = Object.keys(GAME.classes).map(Number).filter(id => !GAME.classes[id].parent);
+// Career: a top-down emblem tree (1 → 2 → 4 → 8 classes) on an 8-column grid, so every class sits
+// centred above its descendants; connector bands between the rows highlight the chosen branch.
+// The phone layout shows a strip of the four path emblems instead and reveals the tree on demand.
+function renderCareer(build) {
+  const path = lineage(build.career);
+  const onPath = new Set(path);
   const nodes = [];
-  const tiers = new Map();
   let leaf = 0;
-  const place = (id) => {
+  const place = id => {
     const c = GAME.classes[id];
     const kids = (c.children || []).filter(k => GAME.classes[k]);
     let start, span;
@@ -253,48 +278,64 @@ function renderCareerTree(build) {
       start = placed[0].start;
       span = placed.reduce((n, p) => n + p.span, 0);
     }
-    nodes.push({ id, c, start, span, kids: kids.length, side: path.has(kids[0]) ? 'up' : path.has(kids[1]) ? 'down' : null });
-    if (!tiers.has(c.tier)) tiers.set(c.tier, c.level);
+    nodes.push({ id, c, start, span, kids, side: onPath.has(kids[0]) ? 'left' : onPath.has(kids[1]) ? 'right' : null });
     return { start, span };
   };
-  roots.forEach(place);
-  const tierCount = tiers.size;
+  Object.keys(GAME.classes).map(Number).filter(id => !GAME.classes[id].parent).forEach(place);
+  nodes.sort((a, b) => a.c.tier - b.c.tier || a.start - b.start);
 
   const tree = $('#career-tree');
-  tree.style.setProperty('--tiers', tierCount);
   tree.style.setProperty('--leaves', leaf);
   tree.replaceChildren(
-    ...[...tiers.entries()].sort((a, b) => a[0] - b[0]).map(([tier, level]) =>
-      el('span', { class: 'tier-label', style: `grid-column:${tier}`, 'aria-hidden': 'true' },
-        el('small', {}, 'Lvl '), String(level))),
-    ...nodes.filter(n => n.kids).map(({ c, start, span, side, id }) => el('span', {
+    ...nodes.filter(n => n.kids.length).map(({ id, c, start, span, side }) => el('span', {
       class: 'branch', 'aria-hidden': 'true',
-      style: `grid-column:${c.tier};grid-row:${start + 1} / span ${span}`,
-      'data-on': path.has(id) ? 'true' : null,
-      'data-side': side,
+      style: `grid-column:${start} / span ${span};grid-row:${c.tier * 2}`,
+      'data-on': onPath.has(id) ? 'true' : null, 'data-side': side,
     })),
-    ...nodes.sort((a, b) => a.c.tier - b.c.tier || a.start - b.start).map(({ id, c, start, span, kids }) => {
-      const parentOk = !c.parent || path.has(c.parent) || path.has(id);
+    ...nodes.map(({ id, c, start, span }) => {
+      const parentOk = !c.parent || onPath.has(c.parent) || onPath.has(id);
       const locked = build.level < c.level;
-      const onPath = path.has(id);
+      const active = id === build.career;
       return el('button', {
-        type: 'button', class: 'career-btn', 'aria-pressed': String(onPath), 'data-focus-key': `class:${id}`,
-        style: `grid-column:${c.tier};grid-row:${start + 1} / span ${span}`,
-        title: locked ? `Requires level ${c.level}`
-          : id === build.career && c.parent ? `Active class · click to go back to ${GAME.classes[c.parent].name}`
-          : (c.parent ? `From ${GAME.classes[c.parent].name}` : ''),
-        'aria-label': `${c.name}, level ${c.level}${c.parent ? `, from ${GAME.classes[c.parent].name}` : ''}${locked ? ', locked' : ''}${id === build.career ? ', active class' : ''}`,
+        type: 'button', class: 'plain career-btn', 'aria-pressed': String(onPath.has(id)), 'data-focus-key': `class:${id}`,
+        style: `grid-column:${start} / span ${span};grid-row:${c.tier * 2 - 1}`,
+        title: locked ? `${c.name} · requires level ${c.level}`
+          : active && c.parent ? `${c.name} · active class, click to go back to ${GAME.classes[c.parent].name}`
+          : c.parent ? `${c.name} · from ${GAME.classes[c.parent].name}` : c.name,
+        'aria-label': `${c.name}, tier ${c.tier}, level ${c.level}${c.parent ? `, from ${GAME.classes[c.parent].name}` : ''}${locked ? ', locked' : ''}${active ? ', active class' : ''}`,
         disabled: locked,
-        'data-offpath': parentOk ? null : 'true',
         'data-tier': c.tier,
-        'data-leaf': kids ? null : 'true',
-        'data-active': id === build.career ? 'true' : null,
-        'data-parent-on': c.parent && path.has(c.parent) ? 'true' : null,
-        onclick: () => editBuild(b => setCareer(b, path.has(id) && id === b.career && c.parent ? c.parent : id)),
+        'data-offpath': parentOk ? null : 'true',
+        'data-active': active ? 'true' : null,
+        onclick: () => editBuild(b => setCareer(b, onPath.has(id) && id === b.career && c.parent ? c.parent : id)),
       },
-      el('span', { class: 'node-label' }, c.name),
-      locked ? el('span', { class: 'node-req' }, `L${c.level}`) : null);
+      icon(classIcon(id), 64, 'emblem'),
+      locked ? el('span', { class: 'node-req', 'aria-hidden': 'true' }, `L${c.level}`) : null);
     }));
+
+  $('#career-path').replaceChildren(...path.flatMap((id, i) => [
+    ...(i ? [el('span', { class: 'sep', 'aria-hidden': 'true' }, '›')] : []),
+    el('span', { class: i === path.length - 1 ? 'active' : null }, GAME.classes[id].name),
+  ]));
+
+  // Phone strip: one slot per tier; empty tiers show the level they unlock at.
+  const tierLevel = [, 1, 5, 15, 30];
+  $('#career-strip').replaceChildren(...[1, 2, 3, 4].map(tier => {
+    const id = path[tier - 1];
+    const c = id ? GAME.classes[id] : null;
+    return el('button', {
+      type: 'button', class: `plain strip-node${c ? '' : ' empty'}`, 'data-active': id === build.career ? 'true' : null,
+      'data-focus-key': `strip:${tier}`,
+      'aria-label': c ? `${c.name}, tier ${tier}. Change class path` : `Tier ${tier} not chosen, unlocks at level ${tierLevel[tier]}. Change class path`,
+      onclick: () => { careerTreeOpen = true; render(); $('#career-tree')?.querySelector('.career-btn[data-active="true"]')?.focus({ preventScroll: true }); },
+    },
+    c ? icon(classIcon(id), 64, 'emblem') : el('span', { class: 'emblem slot', 'aria-hidden': 'true' }, `L${tierLevel[tier]}`),
+    el('span', { class: 'strip-name' }, c ? c.name : `Tier ${ROMAN[tier]}`));
+  }));
+  const toggle = $('#career-toggle');
+  toggle.setAttribute('aria-expanded', String(careerTreeOpen));
+  toggle.textContent = careerTreeOpen ? 'Hide class tree' : 'Change class path';
+  tree.dataset.open = String(careerTreeOpen);
 }
 
 // Sticky readout above the skills, so the budget stays in view while pumping ranks.
@@ -304,43 +345,53 @@ function renderBudgetBar(build) {
     const pct = total > 0 ? Math.min(100, (spent / total) * 100) : (spent > 0 ? 100 : 0);
     return el('div', { class: `budget-item${over ? ' over' : ''}` },
       el('span', { class: 'budget-label' }, label),
-      el('span', { class: 'budget-value' }, el('b', {}, String(spent)), ` / ${total}`),
-      el('span', { class: 'budget-left' }, over ? `${spent - total} over` : `${total - spent} left`),
+      el('span', { class: 'budget-value' }, el('b', {}, String(Math.abs(total - spent))), over ? ' over' : ' left'),
+      el('span', { class: 'budget-left' }, `${spent} / ${total}`),
       el('span', { class: 'bar', 'aria-hidden': 'true' }, el('i', { style: `width:${pct}%` })));
   };
   $('#budget-bar').replaceChildren(
     el('span', { class: 'budget-build' }, `L${build.level} ${GAME.classes[build.career]?.name ?? ''}`),
-    item('Skill points', spentSkillPoints(build), skillPointBudget(build.level)),
-    item('Attributes', spentAttributePoints(build), attributePointBudget(build.level)));
+    item('Training points', spentSkillPoints(build), skillPointBudget(build.level)),
+    item('Attribute points', spentAttributePoints(build), attributePointBudget(build.level)));
 }
 
-function renderSkills(build, character) {
+// One collapsible panel per class on the path. Collapsed state lives in memory for the session.
+function renderSkills(build) {
   const groups = lineage(build.career).map(classId => {
     const c = GAME.classes[classId];
-    const skills = Object.entries(GAME.skills).filter(([, s]) => s.class === classId).map(([id]) => Number(id));
+    const skills = Object.keys(GAME.skills).map(Number).filter(id => GAME.skills[id].class === classId);
     const spent = skills.reduce((n, id) => n + rankCost(rankOf(build, id)), 0);
-    return el('section', { class: 'skill-group', 'data-tier': c.tier },
-      el('h3', {},
-        el('span', { class: 'group-name' }, c.name),
-        el('span', { class: 'unlock muted' }, `unlocks at level ${c.level}`),
-        el('span', { class: 'group-spent', title: 'Skill points spent in this class' }, el('b', {}, String(spent)), ' pts')),
-      el('div', { class: 'skill-list' }, ...skills.map(id => skillCard(id, build))));
+    const key = `tier:${classId}`;
+    return el('details', {
+      class: 'panel tier', 'data-tier': c.tier, open: !collapsed.has(key),
+      ontoggle: e => { if (e.target.open) collapsed.delete(key); else collapsed.add(key); },
+    },
+    el('summary', { class: 'tierhead', 'data-focus-key': key },
+      el('span', { class: 'tier-no' }, `Tier ${ROMAN[c.tier]}`),
+      el('span', { class: 'tier-name' }, c.name),
+      el('span', { class: 'tier-from' }, `from level ${c.level}`),
+      el('span', { class: 'tier-pts', title: 'Training points spent in this class' }, el('b', {}, String(spent)), ' pts')),
+    el('div', { class: 'skill-list' }, ...skills.map(id => skillCard(id, build))));
   });
-  $('#skill-groups').replaceChildren(...groups);
+  $('#skill-groups').replaceChildren($('#skills-title'), ...groups);
 }
 
 function skillCard(skillId, build) {
   const s = GAME.skills[skillId];
+  const name = displayName(s);
   const rank = rankOf(build, skillId);
   const min = minRank(skillId);
   const isSel = selected?.skillId === skillId;
   const kind = skillKind(s);
   const left = skillPointBudget(build.level) - spentSkillPoints(build);
-  return el('article', { class: `skill${isSel ? ' selected' : ''}${rank > min ? ' trained' : ''}`, 'data-kind': kind.toLowerCase() },
+  const open = () => select(skillId, Math.max(1, rank));
+  return el('article', { class: `skill${isSel ? ' selected' : ''}${rank > min ? ' trained' : ''}${rank > 0 ? ' owned' : ''}`, 'data-kind': kind.toLowerCase() },
+    el('button', { type: 'button', class: 'plain skill-icon', tabindex: '-1', 'aria-hidden': 'true', onclick: open },
+      icon(skillIcon(skillId, rank), 64)),
     el('div', { class: 'skill-head' },
-      el('button', { type: 'button', class: 'skill-name plain', onclick: () => select(skillId, Math.max(1, rank)) }, displayName(s)),
-      el('span', { class: 'skill-kind' }, kind)),
-    el('div', { class: 'ranks', role: 'group', 'aria-label': `${displayName(s)} rank, ${rank} of ${s.maxRank}` },
+      el('span', { class: 'skill-kind' }, kind),
+      el('button', { type: 'button', class: 'skill-name plain', 'data-focus-key': `name:${skillId}`, onclick: open }, name)),
+    el('div', { class: 'ranks', role: 'group', 'aria-label': `${name} rank, ${rank} of ${s.maxRank}` },
       ...Array.from({ length: s.maxRank }, (_, i) => {
         const r = i + 1;
         // A rank above the current one that the remaining points cannot pay for.
@@ -348,17 +399,17 @@ function skillCard(skillId, build) {
         return el('button', {
           type: 'button', class: `rank${r <= rank ? ' on' : ''}${r <= min ? ' base' : ''}${cant ? ' cant' : ''}`, 'data-focus-key': `rank:${skillId}:${r}`,
           'aria-pressed': String(r <= rank),
-          'aria-label': `Rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
+          'aria-label': `${name} rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
           onclick: () => {
             editBuild(b => setRank(b, skillId, r === rank ? r - 1 : r));
             select(skillId, r);
           },
           onmouseenter: () => preview(skillId, r),
           onfocus: () => preview(skillId, r),
-        }, s.maxRank === 1 ? 'Train' : String(r));
+        }, s.maxRank === 1 ? (s.signature ? 'Signature' : 'Train') : String(r));
       }),
       el('span', { class: 'rank-readout', 'aria-hidden': 'true' }, `${rank}/${s.maxRank}`),
-      rank > min ? el('button', { type: 'button', class: 'clear ghost', 'data-focus-key': `clear:${skillId}`, title: 'Reset this skill', 'aria-label': `Reset ${displayName(s)}`,
+      rank > min ? el('button', { type: 'button', class: 'clear ghost', 'data-focus-key': `clear:${skillId}`, title: 'Reset this skill', 'aria-label': `Reset ${name}`,
         onclick: () => editBuild(b => setRank(b, skillId, min)) }, '×') : null));
 }
 
@@ -389,25 +440,42 @@ function renderDetail(build, character, override) {
     box.replaceChildren(el('p', { class: 'muted' }, 'Select a skill or hover a rank to see its details.'));
     return;
   }
-  const s = GAME.skills[target.skillId];
+  const id = target.skillId;
+  const s = GAME.skills[id];
+  const name = displayName(s);
   const rank = Math.min(s.maxRank, Math.max(1, target.rank));
-  const owned = rankOf(build, target.skillId);
+  const owned = rankOf(build, id);
+  const min = minRank(id);
+  const kind = skillKind(s);
   const kids = [
-    el('h2', {}, displayName(s)),
+    el('div', { class: 'detail-head' },
+      icon(skillIcon(id, rank), 64, 'detail-icon'),
+      el('div', { class: 'detail-title' },
+        el('span', { class: 'lbl' }, `${kind} · ${GAME.classes[s.class].name} · level ${s.level}`),
+        el('h2', {}, name))),
+    el('div', { class: 'vranks', role: 'group', 'aria-label': `${name}: rank to view` },
+      ...Array.from({ length: s.maxRank }, (_, i) => {
+        const r = i + 1;
+        return el('button', {
+          type: 'button', class: `rank${r <= owned ? ' on' : ''}${r <= min ? ' base' : ''}${r === rank ? ' viewing' : ''}`,
+          'aria-pressed': String(r === rank), 'aria-label': `View rank ${r}${r <= owned ? ', owned' : ''}`, 'data-focus-key': `view:${id}:${r}`,
+          onclick: () => select(id, r),
+        }, s.maxRank === 1 ? (s.signature ? 'Signature' : 'Train') : String(r));
+      })),
     el('p', { class: 'meta' },
-      el('span', { class: 'tag', 'data-kind': skillKind(s).toLowerCase() }, skillKind(s)),
-      el('span', { class: 'tag' }, GAME.classes[s.class].name),
-      el('span', { class: 'tag' }, `Level ${s.level}`),
-      el('span', { class: 'tag' }, `Rank ${rank} / ${s.maxRank}`)),
+      el('span', { class: 'tag', 'data-kind': kind.toLowerCase() }, kind),
+      el('span', { class: 'tag' }, `Rank ${rank} / ${s.maxRank}`),
+      owned >= rank ? el('span', { class: 'tag owned' }, 'Owned') : null),
   ];
 
+  const stats = derivedStats(character.race, build.level, build.attributes);
   if (s.abilities.length) {
     for (const abilityId of s.abilities) {
       const a = GAME.abilities[abilityId];
       const pump = a.pumps[rank] || a.pumps[1];
       if (pump) {
         kids.push(el('p', { class: 'rank-title' }, pump.name));
-        kids.push(el('pre', { class: 'desc' }, abilityText(abilityId, rank, pump.desc, build.level, derivedStats(character.race, build.level, build.attributes))));
+        kids.push(el('pre', { class: 'desc' }, abilityText(abilityId, rank, pump.desc, build.level, stats)));
       }
       if (a.logos.length) kids.push(el('div', { class: 'chips', role: 'group', 'aria-label': 'Logos required' },
         el('span', { class: 'chips-label' }, 'Logos'), ...a.logos.map(l => el('span', { class: 'chip' }, l))));
@@ -420,30 +488,57 @@ function renderDetail(build, character, override) {
     }
   }
 
-  const step = owned >= rank ? `Owned (rank ${owned}).` : `Rank ${rank} costs ${rank} point(s); ${rankCost(rank) - rankCost(owned)} more from rank ${owned}.`;
-  kids.push(el('p', { class: `cost${owned >= rank ? ' owned' : ''}` }, step));
-  kids.push(el('details', {}, el('summary', {}, 'Skill overview'), ...overview(s.desc, rank)));
+  // Cost line plus a train/untrain action, so the rank can be changed from the detail sheet too.
+  const left = skillPointBudget(build.level) - spentSkillPoints(build);
+  let costText, action = null;
+  if (owned >= rank) {
+    costText = `Owned · rank ${owned}` + (owned < s.maxRank ? ` · rank ${owned + 1} costs ${owned + 1} more point${owned + 1 > 1 ? 's' : ''}` : ' · maximum rank');
+    if (rank > min) action = el('button', { type: 'button', class: 'detail-act', 'data-focus-key': `act:${id}`,
+      onclick: () => { editBuild(b => setRank(b, id, rank - 1)); select(id, Math.max(1, rank - 1)); } }, `Untrain to rank ${rank - 1}`);
+  } else {
+    const need = rankCost(rank) - rankCost(owned);
+    costText = `Rank ${rank} costs ${need} more point${need > 1 ? 's' : ''} from rank ${owned}` + (need > left ? ` · only ${Math.max(0, left)} left` : '');
+    action = el('button', { type: 'button', class: `detail-act${need > left ? ' cant' : ''}`, 'data-focus-key': `act:${id}`,
+      onclick: () => { editBuild(b => setRank(b, id, rank)); select(id, rank); } }, `Train to rank ${rank}`);
+  }
+  kids.push(el('div', { class: `cost${owned >= rank ? ' owned' : ''}` }, el('span', {}, costText), action));
+
+  kids.push(...overview(s.desc, rank));
+
+  // Previous / next skill in the order the panels show them (used on the bottom-sheet layouts).
+  const order = visibleSkills(build);
+  const i = order.indexOf(id);
+  const navBtn = (j, dir) => {
+    const other = order[j];
+    const label = other ? displayName(GAME.skills[other]) : '';
+    return el('button', {
+      type: 'button', class: `nav-${dir}`, disabled: !other, 'data-focus-key': `nav:${dir}`,
+      'aria-label': other ? `${dir === 'prev' ? 'Previous' : 'Next'} skill: ${label}` : `No ${dir === 'prev' ? 'previous' : 'next'} skill`,
+      onclick: () => { const { build: b } = current(); select(other, Math.max(1, rankOf(b, other))); },
+    }, dir === 'prev' ? '‹ ' : '', el('span', { class: 'nav-name' }, label || '—'), dir === 'next' ? ' ›' : '');
+  };
+  kids.push(el('div', { class: 'detail-nav' }, navBtn(i - 1, 'prev'), navBtn(i + 1, 'next')));
   box.replaceChildren(...kids);
 }
 
-// The client's skill overview ends with "Pump N: effect" lines; show those as a table with the
-// viewed rank highlighted, and anything else as text.
+// The client's skill overview ends with "Pump N: effect" lines; show those as an all-ranks table
+// with the viewed rank highlighted, and the intro prose in a collapsed block.
 function overview(text, rank) {
-  const lines = text.split('\n');
   const pumps = [];
   const prose = [];
-  for (const line of lines) {
+  for (const line of text.split('\n')) {
     const m = line.match(/^Pump (\d+):\s*(.*)$/);
     if (m) pumps.push([Number(m[1]), m[2]]);
     else prose.push(line);
   }
   const out = [];
-  const intro = prose.join('\n').trim();
-  if (intro) out.push(el('pre', { class: 'desc' }, intro));
   if (pumps.length) {
+    out.push(el('p', { class: 'lbl all-ranks' }, 'All ranks'));
     out.push(el('table', { class: 'pump-table' }, el('tbody', {}, ...pumps.map(([n, effect]) =>
       el('tr', { class: n === rank ? 'current' : null }, el('th', { scope: 'row' }, String(n)), el('td', {}, effect))))));
   }
+  const intro = prose.join('\n').trim();
+  if (intro) out.push(el('details', { class: 'about' }, el('summary', {}, 'About this skill'), el('pre', { class: 'desc' }, intro)));
   return out;
 }
 
@@ -478,6 +573,24 @@ function wire() {
   $('#level-up').addEventListener('click', () => setLevel(store.activeBuild().level + 1));
   $('#level-range').addEventListener('input', e => setLevel(e.target.value));
   $('#level-input').addEventListener('change', e => setLevel(e.target.value));
+
+  // Phone: the career tree is hidden behind the path strip until asked for.
+  $('#career-toggle').addEventListener('click', () => { careerTreeOpen = !careerTreeOpen; render(); });
+  $('#attrs-sec').addEventListener('toggle', e => {
+    if (!isPhone()) return;
+    if (e.target.open) collapsed.delete('attrs'); else collapsed.add('attrs');
+  });
+  phoneMq.addEventListener('change', render);
+
+  // The "···" menu is a <details>; close it after an item is used, on Escape, or on a click outside.
+  const menu = $('#more-menu');
+  menu.querySelector('.menu-list').addEventListener('click', e => {
+    if (e.target.closest('button, label')) menu.open = false;
+  });
+  document.addEventListener('click', e => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  menu.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && menu.open) { e.preventDefault(); menu.open = false; menu.querySelector('summary').focus(); }
+  });
 
   // Share / import.
   const dialog = $('#share-dialog');

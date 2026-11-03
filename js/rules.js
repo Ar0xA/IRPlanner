@@ -150,7 +150,7 @@ export function validate(build, raceKey) {
     if (rank > s.maxRank) issues.push({ level: 'error', text: `${displayName(s)} is above its maximum rank ${s.maxRank}.` });
   }
   const skillLeft = skillPointBudget(build.level) - spentSkillPoints(build);
-  if (skillLeft < 0) issues.push({ level: 'error', text: `${-skillLeft} skill point(s) over budget.` });
+  if (skillLeft < 0) issues.push({ level: 'error', text: `${-skillLeft} training point(s) over budget.` });
   const attrLeft = attributePointBudget(build.level) - spentAttributePoints(build);
   if (attrLeft < 0) issues.push({ level: 'error', text: `${-attrLeft} attribute point(s) over budget.` });
   if (!RACE_GROWTH[raceKey]) issues.push({ level: 'warn', text: 'Unknown race; using Human growth.' });
