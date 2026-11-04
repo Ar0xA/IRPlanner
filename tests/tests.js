@@ -1,6 +1,7 @@
 // Planner tests. Open tests/index.html from a local server (or the live site) and read the result.
 // Reference numbers come from the Rasa.NET source and its unit tests, the client data, and
-// tests/expected_stats.json (an independent 32-bit float version, tools/gen_expected_stats.py).
+// tests/expected_stats.json (an independent 32-bit float version, tools/gen_expected_stats.py),
+// and tests/server_stats.json (output of the real server code, tools/PlannerDumpTests.cs).
 import { GAME } from '../js/data/gamedata.js';
 import {
   MAX_LEVEL, rankCost, skillCost, skillPointBudget, attributePointBudget, baseAttributes, derivedStats,
@@ -9,6 +10,7 @@ import {
 } from '../js/rules.js';
 import { encodeShare, decodeShare } from '../js/storage.js';
 import { abilityText } from '../js/abilitytext.js';
+import { resolveTokens } from '../js/abilityscale.js';
 
 const results = [];
 function test(name, fn) {
@@ -327,6 +329,33 @@ test(`Independent float32 reference (${rows.length} rows)`, ({ eq, ok }) => {
     eq([d.body, d.mind, d.spirit, d.health, d.power, d.regen, d.regenPerSecond],
       [r.body, r.mind, r.spirit, r.health, r.power, r.regen, r.regenPerSecond], `${r.race} L${r.level} ${r.spent}`);
     for (const key of ['armorBonus', 'logosBonus', 'critChance']) ok(Math.abs(d[key] - r[key]) < 1e-9, `${key} ${r.race} L${r.level} ${r.spent}: ${d[key]} vs ${r[key]}`);
+  }
+});
+
+// ---- output of the real server code --------------------------------------------------------
+// tests/server_stats.json is written by the real C# code: tools/PlannerDumpTests.cs run inside
+// Rasa.Test at server commit 6394cc3.
+
+const server = await (await fetch('server_stats.json')).json();
+test(`Real server output: stats and points (${server.rows.length} rows)`, ({ eq, ok }) => {
+  ok(server.rows.length > 1000, 'server output loaded');
+  for (const r of server.rows) {
+    const [body, mind, spirit] = r.spent;
+    const b = build({ level: r.level, attributes: { body, mind, spirit } });
+    const d = derivedStats(r.race, r.level, b.attributes);
+    const label = `${r.race} L${r.level} ${r.spent}`;
+    eq([d.body, d.mind, d.spirit, d.health, d.power, d.regen, d.regenPerSecond],
+      [r.body, r.mind, r.spirit, r.health, r.power, r.regen, r.regenPerSecond], label);
+    ok(Math.abs(d.critChance - r.critChance) < 1e-9, `crit ${label}: ${d.critChance} vs ${r.critChance}`);
+    eq(skillPointBudget(r.level), r.trainingLeft, `training ${label}`);
+    eq(attributePointBudget(r.level) - spentAttributePoints(b), r.attrLeft, `attributes ${label}`);
+  }
+});
+
+test(`Real server output: ability scaling (${server.scales.length} rows)`, ({ eq }) => {
+  for (const s of server.scales) {
+    eq(resolveTokens({ a: { scale: 2, base: s.baseAmount } }, s.level).a, String(s.type2), `type 2 base ${s.baseAmount} L${s.level}`);
+    eq(resolveTokens({ a: { scale: 1, base: s.baseAmount } }, s.level).a, String(s.type1), `type 1 base ${s.baseAmount} L${s.level}`);
   }
 });
 

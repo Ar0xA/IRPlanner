@@ -58,9 +58,23 @@ All of these live in `js/rules.js`, with a source note on each one. Apart from t
 
 ## Tests
 
-Open `tests/index.html` from a local server, or at `/tests/` on the live site. It checks the rules against the rows in Rasa.NET's own unit tests and against `tests/expected_stats.json`, an independent version of the server's 32-bit float math covering every race and level. It also checks the client data, point budgets, class gating, damaged imports, share codes and ability tooltips.
+Open `tests/index.html` from a local server, or at `/tests/` on the live site. It checks the rules against:
+- `tests/server_stats.json`: output of the real Rasa.NET code (commit `6394cc3`) for every race and level, covering stats, crit, point budgets and ability scaling.
+- `tests/expected_stats.json`: an independent version of the server's 32-bit float math.
+- The rows in Rasa.NET's own unit tests.
 
-To rebuild the reference after a server change (it reads the health table from the server source; needs numpy):
+It also checks the client data, class gating, damaged imports, share codes and ability tooltips.
+
+To refresh after a server change:
+1. Copy `tools/PlannerDumpTests.cs` into `src/Rasa.Test/Gameplay/` in a Rasa.NET checkout.
+2. From that checkout, run the command below with `PLANNER_DUMP` set to `tests/server_stats.json`.
+3. Update the commit named in `tests/tests.js` and in this list.
+
+```bash
+dotnet test src/Rasa.Test/Rasa.Test.csproj --filter "FullyQualifiedName~PlannerDumpTests"
+```
+
+To rebuild the float reference (it reads the health table from the server source; needs numpy):
 
 ```bash
 python -I tools/gen_expected_stats.py path/to/ManifestationManager.cs
