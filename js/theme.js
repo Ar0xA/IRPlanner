@@ -1,9 +1,8 @@
 // Light / dark theme. Loaded as a plain script in <head> so the page never flashes the wrong
-// theme. Follows the system setting until the visitor picks one with the toggle.
+// theme. Dark is the default; the toggle saves the visitor's choice.
 (function () {
   var KEY = 'irplanner.theme';
   var root = document.documentElement;
-  var system = window.matchMedia('(prefers-color-scheme: light)');
 
   function saved() {
     try {
@@ -27,11 +26,10 @@
   }
 
   function current() {
-    return saved() || (system.matches ? 'light' : 'dark');
+    return saved() || 'dark';
   }
 
   apply(current());
-  system.addEventListener('change', function () { if (!saved()) apply(current()); });
 
   document.addEventListener('DOMContentLoaded', function () {
     apply(current());

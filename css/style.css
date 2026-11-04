@@ -42,7 +42,7 @@
   color-scheme: dark;
 }
 
-/* Light theme: js/theme.js sets <html data-theme> from the visitor's choice or their system. */
+/* Light theme: dark is the default; js/theme.js sets <html data-theme> from the visitor's choice. */
 :root[data-theme="light"] {
   --bg: #e4e9ec;
   --bg-grid: rgba(20, 70, 60, .07);
