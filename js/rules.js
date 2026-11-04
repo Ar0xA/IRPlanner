@@ -6,8 +6,9 @@
 //            - the server this planner targets. The retail client receives these numbers
 //            from the server and does not contain them itself.
 //
-// Server numbers live in RULES. The defaults below are built in; js/serverrules.js can replace
-// them with numbers read from a server repository at load time.
+// Server numbers live in RULES. DEFAULT_RULES is the fallback that is always there: a complete
+// table, matching Rasa.NET at the commit named in tests/tests.js. js/serverrules.js can replace
+// values with ones read from a server repository, but only values that pass validRule.
 
 import { GAME } from './data/gamedata.js';
 
@@ -64,11 +65,36 @@ export const DEFAULT_RULES = Object.freeze({
   logosApplied: false,
 });
 
-// The rules in force. Replaced as a whole by applyRules.
+// Whether a value is safe for the math, whatever its source: it may come from a saved file or
+// from storage that has been damaged.
+export function validRule(key, value) {
+  const fallback = DEFAULT_RULES[key];
+  const number = v => typeof v === 'number' && Number.isFinite(v);
+  switch (key) {
+    case 'healthTable':
+    case 'rankCosts':
+      return Array.isArray(value) && value.length === fallback.length && value.every(v => number(v) && v >= 0);
+    case 'skillBonuses':
+      return Array.isArray(value) && value.every(p => Array.isArray(p) && p.length === 2 && p.every(number));
+    case 'signatureSkills':
+      return Array.isArray(value) && value.every(Number.isInteger);
+    case 'raceGrowth':
+      return Object.keys(fallback).every(race => ['body', 'mind', 'spirit'].every(a => number(value?.[race]?.[a])));
+    case 'logosApplied':
+      return typeof value === 'boolean';
+    case 'critDivisor':
+      return number(value) && value > 0;
+    default:
+      return fallback !== undefined && number(value);
+  }
+}
+
+// The rules in force: always complete, starting from the built-in table.
 export const RULES = { ...DEFAULT_RULES };
 
 export function applyRules(values = {}) {
-  Object.assign(RULES, DEFAULT_RULES, values);
+  Object.assign(RULES, DEFAULT_RULES);
+  for (const [key, value] of Object.entries(values || {})) if (validRule(key, value)) RULES[key] = value;
 }
 
 export function rankCost(rank) {

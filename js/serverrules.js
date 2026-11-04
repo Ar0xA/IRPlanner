@@ -309,6 +309,13 @@ export function initServerRules() {
   }
 }
 
+// A value that can't be read now keeps its last good value from the same source. Each value falls
+// back in turn: this read, the last good read, then the built-in table (applyRules).
+function withLastGood(read, previous) {
+  if (!previous || !sameSource(previous.source, read.source)) return read;
+  return { ...read, values: { ...previous.values, ...read.values } };
+}
+
 // Fetches the saved source. A commit never changes, so a cached read of one is kept.
 export async function refreshServerRules() {
   const { source, result } = serverRules;
@@ -319,16 +326,16 @@ export async function refreshServerRules() {
     if (!sameSource(serverRules.source, source)) return false; // switched while loading
     serverRules.error = null;
     if (!fresh.read.length) throw new Error(UNREADABLE);
-    serverRules.result = fresh;
-    applyRules(fresh.values);
-    writeJson(CACHE_KEY, fresh);
+    serverRules.result = withLastGood(fresh, result);
+    applyRules(serverRules.result.values);
+    writeJson(CACHE_KEY, serverRules.result);
     return true;
   } catch (e) {
     serverRules.error = e.message;
     const copy = e.network ? await readSavedCopy(source) : null;
     if (copy && sameSource(serverRules.source, source)) {
-      serverRules.result = copy;
-      applyRules(copy.values);
+      serverRules.result = withLastGood(copy, result);
+      applyRules(serverRules.result.values);
     }
     return !!copy;
   } finally {
@@ -373,6 +380,6 @@ export function describeRules() {
   const where = `${source.repo} @ ${source.ref}${result?.commit && !isCommitHash(source.ref) ? ` (${shortCommit(result.commit)})` : ''}`;
   if (!result) return error ? `Progression rules: built in. Couldn't reach ${where}.` : `Progression rules: built in, loading ${where}…`;
   const stale = error ? ` (no connection: copy saved ${new Date(result.at).toLocaleDateString()})` : '';
-  const missed = result.missed.length ? ` ${result.missed.length} value(s) kept built in.` : '';
+  const missed = result.missed.length ? ` ${result.missed.length} value(s) kept from the last good read or the built-in table.` : '';
   return `Progression rules: ${where}${stale}.${missed}`;
 }

@@ -677,7 +677,7 @@ function renderServerStatus(message, isError) {
         el('b', {}, ' · Read: '), new Date(result.at).toLocaleString()),
       list('Read from the server', result.read, ''),
       list('Different from the built-in numbers', result.changed, 'changed'),
-      list('Could not read, kept built-in', result.missed, 'missed'));
+      list('Could not read, kept the last good value or the built-in table', result.missed, 'missed'));
   }
   $('#server-status').replaceChildren(...rows.filter(Boolean));
   renderSavedCopies();

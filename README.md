@@ -60,8 +60,13 @@ These numbers are read live from a Rasa.NET source tree on GitHub each time the 
 
 - **What is read:** rank costs, training and attribute points, race growth, the health table, Power, regeneration, armor, crit, signature skills and Logos damage. Skills, abilities and text always come from the client.
 - **Safety:** the planner only searches the fetched files for numbers. Nothing from them is ever run. Each number has a range check, and the health and regeneration formulas are checked for the expected shape.
-- **If something can't be read:** that number keeps its built-in value, and the dialog lists it.
-- **With no connection:** each loaded source's files are saved in the browser (the 6 most recent sources), so the planner reads those instead and shows the date of the copy. With no saved copy, it uses the built-in numbers. A service worker (`sw.js`) also keeps the site and icons, so the page opens offline once it has been visited. Without the web fonts it falls back to a system font.
+- **Fallback order:** every value falls back on its own, in this order, so the planner always has a full set:
+  1. A fresh read from GitHub.
+  2. The server files saved in the browser (the 6 most recent sources), with the date of the copy shown.
+  3. The last good value read from that source.
+  4. The built-in table, `DEFAULT_RULES` in `js/rules.js`. It's complete and ships with the site.
+- **Damaged data:** every value is checked before use, whatever its source, and anything invalid is replaced from the built-in table. The dialog lists values that couldn't be read.
+- **Offline site:** a service worker (`sw.js`) keeps the site and icons, so the page opens offline once it has been visited. Without the web fonts it falls back to a system font.
 - **A formula rewritten in a new shape** is refused rather than misread, so a large server change needs a matching change to the patterns in `js/serverrules.js`.
 - **Logos damage:** the planner watches for `logosBonusPercent` being used, a Mind damage divisor being declared, or Mind appearing in `AbilityManager.cs` or `GameEffectManager.cs`. Any of these marks it as applied, and it uses the server's rate if there is one.
 

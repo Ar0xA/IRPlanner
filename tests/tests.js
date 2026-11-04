@@ -6,9 +6,9 @@ import { GAME } from '../js/data/gamedata.js';
 import {
   MAX_LEVEL, rankCost, skillCost, skillPointBudget, attributePointBudget, baseAttributes, derivedStats,
   lineage, availableSkills, rankOf, minRank, isSignatureSkill, isStartingSkill, spentSkillPoints,
-  spentAttributePoints, validate, normalizeBuild, normalizeRace, RACE_GROWTH, DEFAULT_RULES, applyRules,
+  spentAttributePoints, validate, normalizeBuild, normalizeRace, RACE_GROWTH, DEFAULT_RULES, applyRules, RULES,
 } from '../js/rules.js';
-import { parseServerSource, parseRepoInput, isValidRef, isCommitHash, readSavedCopy } from '../js/serverrules.js';
+import { parseServerSource, parseRepoInput, isValidRef, isCommitHash, readSavedCopy, refreshServerRules, serverRules } from '../js/serverrules.js';
 import { saveCopy, loadCopy, listCopies } from '../js/sourcestore.js';
 import { encodeShare, decodeShare } from '../js/storage.js';
 import { abilityText } from '../js/abilitytext.js';
@@ -491,6 +491,96 @@ test('Saved server files give the same rules with no network', ({ eq, ok }) => {
   eq(savedRead.values, parseServerSource(source).values, 'same numbers as the live read');
   eq(noCopy, null, 'no copy, no result');
   ok(savedList.some(c => c.source.repo === testSource.repo), 'listed');
+});
+
+test('The built-in table survives damaged values', ({ eq, ok }) => {
+  const junk = [
+    { healthTable: [1, 2, 3] }, { healthTable: Array(50).fill('x') }, { rankCosts: null }, { rankCosts: [0, 1] },
+    { raceGrowth: { human: { body: 2 } } }, { skillBonuses: 'lots' }, { skillBonuses: [[5]] }, { signatureSkills: {} },
+    { powerBase: 'NaN' }, { powerPerMind: null }, { attrPerLevel: Infinity }, { critDivisor: 0 }, { logosApplied: 'yes' },
+    { somethingElse: 5 }, { __proto__: { powerBase: 9 } },
+  ];
+  try {
+    for (const values of junk) {
+      applyRules(values);
+      for (const key of Object.keys(DEFAULT_RULES)) eq(RULES[key], DEFAULT_RULES[key], `${JSON.stringify(values).slice(0, 40)} -> ${key}`);
+      ok(!('somethingElse' in RULES), 'unknown keys ignored');
+      const d = derivedStats('human', 30, { body: 5, mind: 5, spirit: 5 });
+      ok(Object.values(d).every(Number.isFinite), 'stats stay numbers');
+    }
+    applyRules(null);
+    eq(RULES.powerBase, 100, 'null is fine');
+    applyRules({ powerPerMind: 7, healthTable: [1] });
+    eq([RULES.powerPerMind, RULES.healthTable.length], [7, 50], 'good values kept, bad ones replaced');
+  } finally {
+    applyRules();
+  }
+});
+
+// The whole chain, with GitHub faked. The cached read and saved copy are put back afterwards.
+const CACHE_KEY = 'irplanner.server.cache';
+const chain = {};
+{
+  const cachedBefore = localStorage.getItem(CACHE_KEY);
+  const realFetch = window.fetch;
+  const fake = { repo: 'irplanner/test-chain', ref: 'test' };
+  const respond = files => url => {
+    if (url.includes('api.github.com')) return Promise.resolve(new Response('{}', { status: 403 }));
+    const name = Object.keys(files).find(f => url.endsWith(f));
+    return Promise.resolve(new Response(files[name] ?? '', { status: name ? 200 : 404 }));
+  };
+  const files = changes => ({
+    'ManifestationManager.cs': source.manifestation, 'CriticalHits.cs': source.critical,
+    'AbilityManager.cs': source.ability, 'GameEffectManager.cs': source.effects, ...changes,
+  });
+  try {
+    Object.assign(serverRules, { source: fake, result: null, error: null });
+
+    // A good read with a changed Power rate.
+    window.fetch = respond(files({ 'ManifestationManager.cs': source.manifestation.replace('player.SpentMind * 3;', 'player.SpentMind * 7;') }));
+    await refreshServerRules();
+    chain.fresh = RULES.powerPerMind;
+
+    // A later read where Power can't be read: the last good 7 stays, not the built-in 3.
+    window.fetch = respond(files({ 'ManifestationManager.cs': source.manifestation.replace('player.SpentMind * 3;', 'player.SpentMind * 3 + player.SpentBody;') }));
+    await refreshServerRules();
+    chain.partial = { rate: RULES.powerPerMind, missed: serverRules.result.missed };
+
+    // No connection: the saved files are used, and the last good 7 still stands.
+    window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    await refreshServerRules();
+    chain.offline = { saved: serverRules.result.saved, rate: RULES.powerPerMind, error: !!serverRules.error, full: Object.keys(DEFAULT_RULES).every(k => RULES[k] !== undefined) };
+
+    // No connection and nothing saved for this source: the built-in table.
+    Object.assign(serverRules, { source: { repo: 'irplanner/never-seen', ref: 'test' }, result: null, error: null });
+    applyRules();
+    await refreshServerRules();
+    chain.nothing = { result: serverRules.result, rate: RULES.powerPerMind, table: RULES.healthTable.length, power: derivedStats('human', 30, {}).power };
+  } finally {
+    window.fetch = realFetch;
+    Object.assign(serverRules, { source: null, result: null, error: null });
+    applyRules();
+    if (cachedBefore === null) localStorage.removeItem(CACHE_KEY); else localStorage.setItem(CACHE_KEY, cachedBefore);
+    await new Promise(resolve => {
+      const open = indexedDB.open('irplanner-sources', 1);
+      open.onsuccess = () => {
+        const tx = open.result.transaction('copies', 'readwrite');
+        tx.objectStore('copies').delete(`${fake.repo}@${fake.ref}`);
+        tx.oncomplete = () => { open.result.close(); resolve(); };
+      };
+    });
+  }
+}
+
+test('Fallback chain: fresh, last good, saved copy, built-in table', ({ eq, ok }) => {
+  eq(chain.fresh, 7, 'fresh read used');
+  eq(chain.partial?.rate, 7, 'unreadable value keeps the last good one');
+  ok(chain.partial?.missed.includes('Power'), 'and is reported');
+  eq(chain.offline?.saved, true, 'offline uses the saved copy');
+  eq(chain.offline?.rate, 7, 'offline keeps the last good value');
+  eq(chain.offline?.full, true, 'offline rules are complete');
+  ok(chain.offline?.error, 'and says it is offline');
+  eq(chain.nothing, { result: null, rate: 3, table: 50, power: 332 }, 'nothing saved: the built-in table, fully working');
 });
 
 test('Signature list follows the rules in force', ({ eq }) => {
