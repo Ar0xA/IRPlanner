@@ -3,8 +3,13 @@ import { store, encodeShare, decodeShare } from './storage.js';
 import {
   MAX_LEVEL, rankCost, skillPointBudget, attributePointBudget, baseAttributes, derivedStats,
   lineage, availableSkills, rankOf, minRank, skillCost, spentSkillPoints, spentAttributePoints, validate,
-  displayName, skillKind,
+  displayName, skillKind, isSignatureSkill, RULES,
 } from './rules.js';
+import {
+  DEFAULT_SOURCE, serverRules, initServerRules, refreshServerRules, useSource, describeRules,
+  parseRepoInput, isValidRef, shortCommit,
+} from './serverrules.js';
+import { listCopies } from './sourcestore.js';
 import { abilityText } from './abilitytext.js';
 
 const $ = sel => document.querySelector(sel);
@@ -145,6 +150,7 @@ function render() {
   renderBudgetBar(build);
   renderSkills(build);
   renderDetail(build, character);
+  $('#data-source').textContent = `Game data from client ${GAME.clientVersion}. ${describeRules()}`;
   if (focusKey) {
     const target = document.querySelector(`[data-focus-key="${CSS.escape(focusKey)}"]`);
     if (target && !target.disabled) target.focus({ preventScroll: true });
@@ -255,7 +261,7 @@ function renderSheet(character, build) {
     stat('Power', d.power.toLocaleString()),
     stat('Regen', `${d.regen}%`, ` ${d.regenPerSecond}/s`),
     stat('Armor', `+${fmt(d.armorBonus)}`, '%', 'Bonus to the armor you wear, from all your Body'),
-    stat('Logos dmg', `+${fmt(d.logosBonus)}`, '%', 'Retail rate from the client. Rasa.NET does not apply this yet.'),
+    stat('Logos dmg', `+${fmt(d.logosBonus)}`, '%', RULES.logosApplied ? 'Logos damage bonus, applied by this server' : 'Retail rate from the client. This server does not apply it yet.'),
     stat('Crit', fmt(d.critChance), '%', 'Crit chance: 5% base plus Spirit above your level\'s base'));
 
   const issues = validate(build, character.race);
@@ -400,14 +406,14 @@ function skillCard(skillId, build) {
         return el('button', {
           type: 'button', class: `rank${r <= rank ? ' on' : ''}${r <= min ? ' base' : ''}${cant ? ' cant' : ''}`, 'data-focus-key': `rank:${skillId}:${r}`,
           'aria-pressed': String(r <= rank),
-          'aria-label': s.signature ? `${name}, granted with the class` : `${name} rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
+          'aria-label': isSignatureSkill(skillId) ? `${name}, granted with the class` : `${name} rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
           onclick: () => {
             editBuild(b => setRank(b, skillId, r === rank ? r - 1 : r));
             select(skillId, r);
           },
           onmouseenter: () => preview(skillId, r),
           onfocus: () => preview(skillId, r),
-        }, s.signature ? 'Granted' : String(r));
+        }, isSignatureSkill(skillId) ? 'Granted' : s.maxRank === 1 ? 'Train' : String(r));
       }),
       el('span', { class: 'rank-readout', 'aria-hidden': 'true' }, `${rank}/${s.maxRank}`),
       rank > min ? el('button', { type: 'button', class: 'clear ghost', 'data-focus-key': `clear:${skillId}`, title: 'Reset this skill', 'aria-label': `Reset ${name}`,
@@ -461,7 +467,7 @@ function renderDetail(build, character, override) {
           type: 'button', class: `rank${r <= owned ? ' on' : ''}${r <= min ? ' base' : ''}${r === rank ? ' viewing' : ''}`,
           'aria-pressed': String(r === rank), 'aria-label': `View rank ${r}${r <= owned ? ', owned' : ''}`, 'data-focus-key': `view:${id}:${r}`,
           onclick: () => select(id, r),
-        }, s.signature ? 'Granted' : String(r));
+        }, isSignatureSkill(id) ? 'Granted' : s.maxRank === 1 ? 'Train' : String(r));
       })),
     el('p', { class: 'meta' },
       el('span', { class: 'tag', 'data-kind': kind.toLowerCase() }, kind),
@@ -492,7 +498,7 @@ function renderDetail(build, character, override) {
   // Cost line plus a train/untrain action, so the rank can be changed from the detail sheet too.
   const left = skillPointBudget(build.level) - spentSkillPoints(build);
   let costText, action = null;
-  if (s.signature) {
+  if (isSignatureSkill(id)) {
     costText = `Granted free with the ${GAME.classes[s.class].name} class`;
   } else if (owned >= rank) {
     costText = `Owned · rank ${owned}` + (owned < s.maxRank ? ` · rank ${owned + 1} costs ${owned + 1} more point${owned + 1 > 1 ? 's' : ''}` : ' · maximum rank');
@@ -595,6 +601,8 @@ function wire() {
     if (e.key === 'Escape' && menu.open) { e.preventDefault(); menu.open = false; menu.querySelector('summary').focus(); }
   });
 
+  wireServerRules();
+
   // Share / import.
   const dialog = $('#share-dialog');
   const msg = t => { $('#share-msg').textContent = t; };
@@ -658,6 +666,76 @@ function wire() {
   });
 }
 
+// Server rules dialog: which repository, and which branch, tag or commit, the numbers come from.
+function renderServerStatus(message, isError) {
+  const { source, result } = serverRules;
+  const rows = [el('p', { class: isError ? 'server-msg error' : 'server-msg' }, message || describeRules())];
+  if (source && result) {
+    const list = (label, items, cls) => (items.length ? el('p', { class: `server-list ${cls}` }, el('b', {}, `${label}: `), items.join(', ')) : null);
+    rows.push(
+      el('p', { class: 'server-list' }, el('b', {}, 'Commit: '), result.commit ? shortCommit(result.commit) : 'unknown (GitHub rate limit)',
+        el('b', {}, ' · Read: '), new Date(result.at).toLocaleString()),
+      list('Read from the server', result.read, ''),
+      list('Different from the built-in numbers', result.changed, 'changed'),
+      list('Could not read, kept built-in', result.missed, 'missed'));
+  }
+  $('#server-status').replaceChildren(...rows.filter(Boolean));
+  renderSavedCopies();
+}
+
+// Copies saved on this device: these still load with no connection.
+async function renderSavedCopies() {
+  const copies = await listCopies();
+  $('#server-saved').replaceChildren(...(copies.length ? [el('span', { class: 'lbl' }, 'Saved on this device')] : []),
+    ...copies.map(c => el('button', {
+      type: 'button',
+      title: `Saved ${new Date(c.at).toLocaleString()}`,
+      onclick: () => {
+        $('#server-repo').value = c.source.repo;
+        $('#server-ref').value = c.source.ref;
+        $('#server-load').click();
+      },
+    }, `${c.source.repo} @ ${c.source.ref}`)));
+}
+
+function wireServerRules() {
+  const dialog = $('#server-dialog');
+  const busy = on => { for (const b of dialog.querySelectorAll('.server-actions button')) b.disabled = on; };
+  const fill = source => {
+    $('#server-repo').value = (source || DEFAULT_SOURCE).repo;
+    $('#server-ref').value = (source || DEFAULT_SOURCE).ref;
+  };
+  const load = async source => {
+    busy(true);
+    renderServerStatus('Loading…');
+    try {
+      await useSource(source);
+      renderServerStatus();
+      render();
+    } catch (e) {
+      renderServerStatus(`${e.message} The current rules were not changed.`, true);
+    } finally {
+      busy(false);
+    }
+  };
+  $('#server-open').addEventListener('click', () => {
+    fill(serverRules.source);
+    renderServerStatus();
+    dialog.showModal();
+  });
+  $('#server-load').addEventListener('click', () => {
+    const parsed = parseRepoInput($('#server-repo').value);
+    const ref = parsed?.ref || $('#server-ref').value.trim();
+    if (!parsed) return renderServerStatus('Enter a repository as owner/name or a GitHub link.', true);
+    if (!isValidRef(ref)) return renderServerStatus('Enter a branch, tag or commit.', true);
+    fill({ repo: parsed.repo, ref });
+    return load({ repo: parsed.repo, ref });
+  });
+  $('#server-default').addEventListener('click', () => { fill(DEFAULT_SOURCE); load({ ...DEFAULT_SOURCE }); });
+  $('#server-builtin').addEventListener('click', () => load(null));
+  for (const b of dialog.querySelectorAll('[data-ref]')) b.addEventListener('click', () => { $('#server-ref').value = b.dataset.ref; });
+}
+
 // A shared link (#b=<code>) imports its build once, as a new character.
 function importFromHash() {
   const m = location.hash.match(/^#b=([A-Za-z0-9_-]+)$/);
@@ -668,8 +746,31 @@ function importFromHash() {
   history.replaceState(null, '', location.pathname + location.search);
 }
 
-$('#data-source').textContent = `Game data from client ${GAME.clientVersion}. Progression rules follow the Rasa.NET server.`;
+initServerRules();
 store.subscribe(render);
 wire();
 importFromHash();
 render();
+// A branch can move, so its rules are fetched on every visit; the page is usable meanwhile.
+refreshServerRules().then(render);
+
+// Lets the site open with no connection. Icons are fetched once, in small batches, so a build
+// looks right offline even if those skills were never viewed.
+async function keepIconsOffline() {
+  const KEY = 'irplanner.iconsSaved';
+  try {
+    if (localStorage.getItem(KEY) === GAME.clientVersion) return;
+    const urls = Object.keys(GAME.classes).map(id => `img/classes/${id}.webp`);
+    for (const [id, s] of Object.entries(GAME.skills)) {
+      urls.push(`img/skills/${id}.webp`);
+      for (let r = 1; r <= s.maxRank; r++) urls.push(`img/skills/ranks/${id}_${r}.webp`);
+    }
+    const cache = await caches.open('irplanner-site-v1');
+    for (let i = 0; i < urls.length; i += 24) await cache.addAll(urls.slice(i, i + 24));
+    localStorage.setItem(KEY, GAME.clientVersion);
+  } catch { /* tried again next visit */ }
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then(keepIconsOffline).catch(() => {});
+}

@@ -6,8 +6,10 @@ import { GAME } from '../js/data/gamedata.js';
 import {
   MAX_LEVEL, rankCost, skillCost, skillPointBudget, attributePointBudget, baseAttributes, derivedStats,
   lineage, availableSkills, rankOf, minRank, isSignatureSkill, isStartingSkill, spentSkillPoints,
-  spentAttributePoints, validate, normalizeBuild, normalizeRace, RACE_GROWTH,
+  spentAttributePoints, validate, normalizeBuild, normalizeRace, RACE_GROWTH, DEFAULT_RULES, applyRules,
 } from '../js/rules.js';
+import { parseServerSource, parseRepoInput, isValidRef, isCommitHash, readSavedCopy } from '../js/serverrules.js';
+import { saveCopy, loadCopy, listCopies } from '../js/sourcestore.js';
 import { encodeShare, decodeShare } from '../js/storage.js';
 import { abilityText } from '../js/abilitytext.js';
 import { resolveTokens } from '../js/abilityscale.js';
@@ -357,6 +359,151 @@ test(`Real server output: ability scaling (${server.scales.length} rows)`, ({ eq
     eq(resolveTokens({ a: { scale: 2, base: s.baseAmount } }, s.level).a, String(s.type2), `type 2 base ${s.baseAmount} L${s.level}`);
     eq(resolveTokens({ a: { scale: 1, base: s.baseAmount } }, s.level).a, String(s.type1), `type 1 base ${s.baseAmount} L${s.level}`);
   }
+});
+
+// ---- reading rules from server source ------------------------------------------------------
+// These fetch real files from GitHub at fixed commits, so they need a network connection.
+
+const PINNED = '6394cc38f533cc2caa819fabfe272404c965202e';
+const SERVER_RAW = `https://raw.githubusercontent.com/InfiniteRasa/Rasa.NET/${PINNED}/src/Rasa.Game/Managers`;
+let source = null;
+try {
+  const get = async f => (await fetch(`${SERVER_RAW}/${f}`)).text();
+  source = {
+    manifestation: await get('ManifestationManager.cs'), critical: await get('CriticalHits.cs'),
+    ability: await get('AbilityManager.cs'), effects: await get('GameEffectManager.cs'),
+  };
+} catch { /* reported by the tests below */ }
+
+test('Reading the pinned server source gives exactly the built-in rules', ({ eq, ok }) => {
+  ok(source, 'server source fetched');
+  const out = parseServerSource(source);
+  eq(out.missed, [], 'everything read');
+  eq(out.changed, [], 'nothing differs');
+  eq(out.read.length, 11, 'all eleven groups');
+  eq(out.values.logosApplied, false, 'Logos is not applied at this commit');
+  for (const key of Object.keys(DEFAULT_RULES)) eq(out.values[key], DEFAULT_RULES[key], key);
+});
+
+test('Changed server numbers flow through to the planner', ({ eq }) => {
+  const edited = source.manifestation
+    .replace('player.SpentMind * 3;', 'player.SpentMind * 5;')
+    .replace('var points = 3 * (player.Level - 1);', 'var points = 4 * (player.Level - 1);')
+    .replace(/if \(level >= 50\)(\s*)pointsAvailable \+= 4;/, 'if (level >= 50)$1pointsAvailable += 9;');
+  const out = parseServerSource({ ...source, manifestation: edited, critical: source.critical.replace('SpiritDivisor = 15.0', 'SpiritDivisor = 10.0') });
+  eq(out.changed.sort(), ['Attribute points per level', 'Crit chance', 'Power', 'Training points per level']);
+  try {
+    applyRules(out.values);
+    eq(derivedStats('human', 30, { mind: 10 }).power, 100 + 232 + 50, 'power');
+    eq(attributePointBudget(30), 116, 'attribute points');
+    eq(skillPointBudget(50), 118, 'training points');
+    eq(derivedStats('human', 30, { spirit: 20 }).critChance, 7, 'crit');
+  } finally {
+    applyRules();
+  }
+  eq(derivedStats('human', 30, {}).power, 332, 'back to built-in');
+});
+
+test('A changed formula shape is refused, not misread', ({ eq, ok }) => {
+  const reshaped = source.manifestation
+    .replace('levelBasedHealth * (totalSpirit + 2 * totalBody)', 'levelBasedHealth * (totalSpirit + 3 * totalBody)')
+    .replace('baseRegen * (totalMind + 2 * totalSpirit)', 'baseRegen * (2 * totalMind + totalSpirit)')
+    .replace('player.SpentMind * 3;', 'player.SpentMind * 3 + player.SpentBody;');
+  const out = parseServerSource({ ...source, manifestation: reshaped });
+  eq(out.missed.sort(), ['Health table and formula', 'Power', 'Regeneration']);
+  ok(!('healthTable' in out.values) && !('powerBase' in out.values), 'unread values not supplied');
+});
+
+test('Logos math is picked up when the server adds it', ({ eq, ok }) => {
+  const logos = changes => parseServerSource({ ...source, ...changes });
+  const near = (a, b, label) => ok(Math.abs(a - b) < 1e-9, `${label}: ${a} vs ${b}`);
+
+  // 1. The existing variable starts being used: its 0.375 applies.
+  let out = logos({ ability: `${source.ability}\nvar amount = rolled * (100 + logosBonusPercent) / 100;` });
+  eq(out.values.logosApplied, true, 'variable used');
+  eq(out.values.logosPerPoint, 0.375, 'its rate');
+  ok(out.changed.includes('Logos damage'), 'reported as changed');
+
+  // 2. A divisor constant appears, as in the client.
+  out = logos({ critical: `${source.critical}\npublic const double MindDamageDivisor = 4.0;` });
+  eq(out.values.logosApplied, true, 'divisor declared');
+  eq(out.values.logosPerPoint, 0.25, 'one over the divisor');
+
+  // 3. Mind reaches the damage code with no readable rate: the retail rate stays.
+  out = logos({ effects: `${source.effects}\nvar bonus = source.Attributes[Attributes.Mind].Current;` });
+  eq(out.values.logosApplied, true, 'Mind in damage code');
+  near(out.values.logosPerPoint, 1 / 3, 'retail rate kept');
+
+  // A comment does not count.
+  out = logos({ effects: `${source.effects}\n    // Attributes.Mind should raise this one day` });
+  eq(out.values.logosApplied, false, 'comment ignored');
+
+  // The stat follows the rate.
+  try {
+    applyRules({ logosApplied: true, logosPerPoint: 0.375 });
+    near(derivedStats('human', 30, { mind: 40 }).logosBonus, 15, 'planner uses the server rate');
+  } finally {
+    applyRules();
+  }
+  near(derivedStats('human', 30, { mind: 30 }).logosBonus, 10, 'back to the retail rate');
+});
+
+test('Unrelated or hostile text yields nothing usable', ({ eq, ok }) => {
+  for (const manifestation of ['', '<html>404</html>', 'requiredSkillLevelPoints = { alert(1) }; HealthBaselinePerLevel = { 1f, 2f }']) {
+    const out = parseServerSource({ manifestation, critical: '' });
+    eq(out.read, [], `nothing read from ${JSON.stringify(manifestation.slice(0, 20))}`);
+    eq(out.values, {}, 'no values');
+  }
+  const silly = parseServerSource({ manifestation: 'var points = 999999 * (player.Level - 1);', critical: '' });
+  ok(!('attrPerLevel' in silly.values), 'out-of-range number refused');
+});
+
+test('Repository and branch input', ({ eq, ok }) => {
+  eq(parseRepoInput('InfiniteRasa/Rasa.NET'), { repo: 'InfiniteRasa/Rasa.NET' });
+  eq(parseRepoInput(' https://github.com/Ar0xA/Rasa.NET.git/ '), { repo: 'Ar0xA/Rasa.NET' });
+  eq(parseRepoInput('https://github.com/InfiniteRasa/Rasa.NET/tree/feature/x'), { repo: 'InfiniteRasa/Rasa.NET', ref: 'feature/x' });
+  for (const bad of ['', 'justone', 'https://evil.example/a/b', '../../etc/passwd', 'a/b/c', 'a b/c']) eq(parseRepoInput(bad), null, bad);
+  for (const good of ['development', 'master', 'feature/x', 'v1.2', PINNED]) ok(isValidRef(good), good);
+  for (const bad of ['', '../x', 'a b', '/x', 'x/', 'a?b=c', 'a#b']) ok(!isValidRef(bad), bad);
+  ok(isCommitHash('6394cc3') && isCommitHash(PINNED) && !isCommitHash('development'), 'commit detection');
+});
+
+// Saved copies use a test key and are removed afterwards.
+const testSource = { repo: 'irplanner/test-copy', ref: 'test' };
+await saveCopy(testSource, source, 'abc1234');
+const savedRaw = await loadCopy(testSource);
+const savedRead = await readSavedCopy(testSource);
+const noCopy = await readSavedCopy({ repo: 'irplanner/none', ref: 'none' });
+const savedList = await listCopies();
+await new Promise(resolve => {
+  const open = indexedDB.open('irplanner-sources', 1);
+  open.onsuccess = () => {
+    const tx = open.result.transaction('copies', 'readwrite');
+    tx.objectStore('copies').delete(`${testSource.repo}@${testSource.ref}`);
+    tx.oncomplete = () => { open.result.close(); resolve(); };
+  };
+});
+
+test('Saved server files give the same rules with no network', ({ eq, ok }) => {
+  ok(savedRaw?.files?.manifestation?.length > 100000, 'whole file kept');
+  ok(savedRead?.saved, 'marked as a saved copy');
+  eq(savedRead.commit, 'abc1234');
+  eq(savedRead.values, parseServerSource(source).values, 'same numbers as the live read');
+  eq(noCopy, null, 'no copy, no result');
+  ok(savedList.some(c => c.source.repo === testSource.repo), 'listed');
+});
+
+test('Signature list follows the rules in force', ({ eq }) => {
+  const wave = skillId('t4_engineer_sig_base_wave');
+  try {
+    applyRules({ signatureSkills: [] });
+    eq(isSignatureSkill(wave), false);
+    eq(skillCost(wave, 1), 1, 'costs a point when not granted');
+    eq(minRank(wave), 0);
+  } finally {
+    applyRules();
+  }
+  eq(isSignatureSkill(wave), true);
 });
 
 // ---- report --------------------------------------------------------------------------------

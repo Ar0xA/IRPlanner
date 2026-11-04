@@ -816,3 +816,13 @@ button.theme-toggle { width: 36px; min-width: 36px; padding: 0; }
 .skill[data-kind="signature"] .rank.on, .skill[data-kind="signature"] .rank.base.on { color: var(--sig-ink); }
 :root[data-theme="light"] .skill[data-kind="signature"] .rank.on::before { background: linear-gradient(180deg, #a87512, var(--sig)); }
 button.skill-icon { background: #0f151a; border: 1px solid var(--line-2); }
+
+/* ---- server rules dialog ------------------------------------------------------------------ */
+
+#server-status { font-size: 13px; }
+.server-msg { margin: 0 0 6px; padding: 7px 10px; background: var(--panel-2); border-left: 2px solid var(--accent); color: var(--text); overflow-wrap: anywhere; }
+.server-msg.error { border-left-color: var(--danger); color: var(--danger); }
+.server-list { margin: 4px 0; color: var(--muted); overflow-wrap: anywhere; }
+.server-list b { color: var(--text); font-weight: 600; }
+.server-list.changed b { color: var(--warn); }
+.server-list.missed b { color: var(--danger); }

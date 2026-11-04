@@ -5,15 +5,74 @@
 //  [server]  Rasa.NET, InfiniteRasa/Rasa.NET (development), src/Rasa.Game/Managers/ManifestationManager.cs
 //            - the server this planner targets. The retail client receives these numbers
 //            from the server and does not contain them itself.
+//
+// Server numbers live in RULES. The defaults below are built in; js/serverrules.js can replace
+// them with numbers read from a server repository at load time.
 
 import { GAME } from './data/gamedata.js';
 
 export const MAX_LEVEL = GAME.maxLevel; // [client] experienceTable
 
-// [client] skillsabilitieswindow.OnPlus: raising a skill to pump N costs N points.
-// Cumulative cost of holding rank N: 0, 1, 3, 6, 10, 15.
+export const DEFAULT_RULES = Object.freeze({
+  // [client] skillsabilitieswindow.OnPlus: raising a skill to pump N costs N points.
+  // [server] requiredSkillLevelPoints: the cumulative cost of holding each rank.
+  rankCosts: [0, 1, 3, 6, 10, 15],
+  // [server] GetSkillPointsAvailable: 2 per level after the first, +5 for the starting Recruit
+  // ranks, +2 at levels 5, 15 and 30, +4 at 50.
+  skillPerLevel: 2,
+  skillStart: 5,
+  skillBonuses: [[5, 2], [15, 2], [30, 2], [50, 4]],
+  // [server] GetAvailableAttributePoints: 3 free points per level after the first.
+  attrPerLevel: 3,
+  // [server] UpdateStatsValues: every race starts at 10/10/10 and gains these per level.
+  raceGrowth: {
+    human:         { body: 2, mind: 2, spirit: 2 },
+    forean_hybrid: { body: 1, mind: 3, spirit: 2 },
+    brann_hybrid:  { body: 1, mind: 1, spirit: 4 },
+    thrax_hybrid:  { body: 3, mind: 1, spirit: 2 },
+  },
+  // [server] HealthBaselinePerLevel (levels 1..50).
+  healthTable: [
+    286.5784148, 312.51565127, 340.8003787, 371.6450605, 405.28138942, 441.96202792, 481.96250612,
+    525.58329139, 573.15204539, 625.02608535, 681.59506802, 743.28391668, 810.55601298, 883.91667764,
+    963.91696626, 1051.15780858, 1146.29452247, 1250.04173638, 1363.17875735, 1486.55542483,
+    1621.09849437, 1767.818599, 1927.81784069, 2102.29806892, 2292.56990847, 2500.06260431,
+    2726.33475751, 2973.08603281, 3242.1699258, 3535.60768567, 3855.60349799, 4204.56104164,
+    4585.10154431, 5000.08347207, 5452.62400104, 5946.1224323, 6484.28572615, 7071.15634718,
+    7711.14262974, 8409.05189147, 9170.12654399, 10000.08347172, 10905.15697485, 11892.14559882,
+    12968.4632023, 14142.19464703, 15422.15652808, 16817.9634005, 18340.1, 20000,
+  ],
+  // [server] The Power attribute's own line, near the end of UpdateStatsValues. Only spent Mind
+  // counts, not a race's Mind growth.
+  powerBase: 100,
+  powerPerLevel: 8,
+  powerPerMind: 3,
+  // [server] baseRegen = (2 * level + 100) / divisor.
+  regenPerLevel: 2,
+  regenBase: 100,
+  // [server] armorMax * (1 + total Body * 0.0066666): a bonus on worn armor, from all Body.
+  armorPerBody: 0.0066666,
+  // [server] CriticalHits: base chance plus Spirit above the level's base.
+  critBase: 5,
+  critDivisor: 15,
+  // [server] SignatureSkills: given with the class, never trained, no points.
+  signatureSkills: [20, 47, 92, 110, 149, 154, 156, 157],
+  // [client] shared/gameconstants MIND_DAMAGE_DIVISOR 3.0: 1% Logos damage per 3 Mind, in percent
+  // per point. Rasa.NET does not apply Mind to damage yet; js/serverrules.js switches logosApplied
+  // on, and takes the server's rate if it has one, when that changes.
+  logosPerPoint: 1 / 3,
+  logosApplied: false,
+});
+
+// The rules in force. Replaced as a whole by applyRules.
+export const RULES = { ...DEFAULT_RULES };
+
+export function applyRules(values = {}) {
+  Object.assign(RULES, DEFAULT_RULES, values);
+}
+
 export function rankCost(rank) {
-  return (rank * (rank + 1)) / 2;
+  return RULES.rankCosts[rank] ?? 0;
 }
 
 // [server] CharacterManager.StartingSkills: new characters hold these Recruit skills at rank 1,
@@ -23,54 +82,28 @@ export const STARTING_SKILL_KEYS = [
   't1_recruit_hand_to_hand', 't1_recruit_motor_assist_armor',
 ];
 
-// [server] ManifestationManager.SkillPointBudget: 2 per level after the first, +5 for the
-// starting Recruit ranks, +2 at levels 5, 15 and 30, +4 at 50.
 export function skillPointBudget(level) {
-  let points = (level - 1) * 2 + 5;
-  if (level >= 5) points += 2;
-  if (level >= 15) points += 2;
-  if (level >= 30) points += 2;
-  if (level >= 50) points += 4;
+  let points = (level - 1) * RULES.skillPerLevel + RULES.skillStart;
+  for (const [atLevel, bonus] of RULES.skillBonuses) if (level >= atLevel) points += bonus;
   return points;
 }
 
-// [server] GetAvailableAttributePoints: 3 free points per level after the first.
 export function attributePointBudget(level) {
-  return 3 * (level - 1);
+  return RULES.attrPerLevel * (level - 1);
 }
 
-// [server] UpdateStatsValues: every race starts at 10/10/10 and gains these per level.
-export const RACE_GROWTH = {
-  human:         { body: 2, mind: 2, spirit: 2 },
-  forean_hybrid: { body: 1, mind: 3, spirit: 2 },
-  brann_hybrid:  { body: 1, mind: 1, spirit: 4 },
-  thrax_hybrid:  { body: 3, mind: 1, spirit: 2 },
-};
+export const RACE_GROWTH = DEFAULT_RULES.raceGrowth; // the race keys; growth itself is in RULES
 
 export function baseAttributes(raceKey, level) {
-  const g = RACE_GROWTH[raceKey] || RACE_GROWTH.human;
+  const g = RULES.raceGrowth[raceKey] || RULES.raceGrowth.human;
   const n = level - 1;
   return { body: 10 + g.body * n, mind: 10 + g.mind * n, spirit: 10 + g.spirit * n };
 }
 
-// [server] HealthBaselinePerLevel (levels 1..50).
-const HEALTH_BASELINE = [
-  286.5784148, 312.51565127, 340.8003787, 371.6450605, 405.28138942, 441.96202792, 481.96250612,
-  525.58329139, 573.15204539, 625.02608535, 681.59506802, 743.28391668, 810.55601298, 883.91667764,
-  963.91696626, 1051.15780858, 1146.29452247, 1250.04173638, 1363.17875735, 1486.55542483,
-  1621.09849437, 1767.818599, 1927.81784069, 2102.29806892, 2292.56990847, 2500.06260431,
-  2726.33475751, 2973.08603281, 3242.1699258, 3535.60768567, 3855.60349799, 4204.56104164,
-  4585.10154431, 5000.08347207, 5452.62400104, 5946.1224323, 6484.28572615, 7071.15634718,
-  7711.14262974, 8409.05189147, 9170.12654399, 10000.08347172, 10905.15697485, 11892.14559882,
-  12968.4632023, 14142.19464703, 15422.15652808, 16817.9634005, 18340.1, 20000,
-];
-
 // [client] shared/gameconstants: what the retail server used. The client defines these but never
 // reads them, so they are the only record of the retail rates.
-// (BODY_ARMOR_DIVISOR is 1.5: 1% armor per 1.5 Body, which the server's 0.0066666 below matches.)
-const MIND_DAMAGE_DIVISOR = 3;     // 1% Logos damage per 3 Mind
-const SPIRIT_CRIT_DIVISOR = 15;    // 1% crit chance per 15 Spirit
-export const BASE_CRITICAL_CHANCE = 5;
+// (BODY_ARMOR_DIVISOR is 1.5 and SPIRIT_CRIT_DIVISOR 15, which RULES matches; MIND_DAMAGE_DIVISOR
+// is 3, RULES.logosPerPoint.)
 
 // C# Math.Round: a midpoint goes to the even neighbour (2.5 -> 2, 3.5 -> 4).
 function roundHalfEven(x) {
@@ -93,26 +126,20 @@ export function derivedStats(raceKey, level, spent) {
   const divisor = 2 * (level - 1) + 2 * humanBase + 10;
 
   const f = Math.fround;
-  const perHealth = f(f(HEALTH_BASELINE[level - 1]) / f(divisor));
+  const perHealth = f(f(RULES.healthTable[level - 1]) / f(divisor));
   const health = Math.max(1, Math.trunc(f(perHealth * f(spirit + 2 * body))));
-  // The Power attribute's own line, near the end of UpdateStatsValues. Only spent Mind counts,
-  // not a race's Mind growth. (The Body + 2 Mind formula was the old adrenaline bar, which is
-  // now a fixed 1000 for everyone.)
-  const power = 100 + (level - 1) * 8 + (spent.mind || 0) * 3;
-  const perRegen = f(f(2 * level + 100) / f(divisor));
+  const power = RULES.powerBase + (level - 1) * RULES.powerPerLevel + (spent.mind || 0) * RULES.powerPerMind;
+  const perRegen = f(f(RULES.regenPerLevel * level + RULES.regenBase) / f(divisor));
   const regen = Math.trunc(f(perRegen * f(mind + 2 * spirit)));
   const regenPerSecond = roundHalfEven((2 * regen) / 100);
 
   return {
     body, mind, spirit,
     health, power, regen, regenPerSecond,
-    // [server] armorMax * (1 + total Body * 0.0066666): a bonus on worn armor, from all Body.
-    armorBonus: body * 0.66666,
-    // [client] rate only: Rasa.NET does not apply Mind to Logos damage yet. Measured above the
-    // level's base, like crit.
-    logosBonus: Math.max(0, mind - humanBase) / MIND_DAMAGE_DIVISOR,
-    // [server] CriticalHits.AttackerChance: base chance plus Spirit above the level's base.
-    critChance: BASE_CRITICAL_CHANCE + Math.max(0, spirit - humanBase) / SPIRIT_CRIT_DIVISOR,
+    armorBonus: body * RULES.armorPerBody * 100,
+    // Measured above the level's base, like crit.
+    logosBonus: Math.max(0, mind - humanBase) * RULES.logosPerPoint,
+    critChance: RULES.critBase + Math.max(0, spirit - humanBase) / RULES.critDivisor,
   };
 }
 
@@ -131,7 +158,7 @@ export function isStartingSkill(skillId) {
 // [server] IsSignatureSkill / GrantSignatureSkill: a Tier IV class's signature ability is given
 // at its one rank with the class. It cannot be trained and costs no points.
 export function isSignatureSkill(skillId) {
-  return !!GAME.skills[skillId]?.signature;
+  return RULES.signatureSkills.includes(Number(skillId));
 }
 
 export function minRank(skillId) {
@@ -179,7 +206,7 @@ export function normalizeBuild(b) {
     if (r > minRank(n)) skills[n] = r;
   }
   const a = b.attributes || {};
-  const big = attributePointBudget(MAX_LEVEL);
+  const big = 5000; // far above any budget; the rules in force may not be loaded yet
   return {
     ...b,
     level: int(b.level, 1, MAX_LEVEL),

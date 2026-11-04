@@ -51,10 +51,21 @@ These numbers are not in the client at all. The planner follows the [Rasa.NET](h
 | Power | 100, plus 8 per level after level 1, plus 3 per point spent on Mind. Race Mind growth doesn't count. |
 | Armor bonus | Multiplies the armor you wear by 1 + 0.66666% per point of total Body |
 | Crit chance | 5% plus 1% per 15 Spirit above a human's base for that level (`CriticalHits.cs`) |
-| Logos damage | **Not applied by Rasa.NET yet.** The planner shows the retail rate from the client, above a human's base for that level. |
+| Logos damage | **Not applied by Rasa.NET yet.** The planner shows the retail rate from the client, above a human's base for that level. It switches to the server's rate on its own once the server applies it (see below). |
 | Adrenaline | A fixed 1000-point bar for everyone, so it isn't a planner stat |
 
-All of these live in `js/rules.js`, with a source note on each one. Apart from the client's rates, they are the emulator's reconstruction: the original retail server's formulas were never published, and Rasa.NET's Power line is marked as a test in its source. If your server uses different numbers, `js/rules.js` is the only file to change.
+### Following a server
+
+These numbers are read live from a Rasa.NET source tree on GitHub each time the page opens. Open **··· → Server rules** to point the planner at another repository, a branch, a tag or a commit. The default is `InfiniteRasa/Rasa.NET` at `development`, and the footer shows the source in use.
+
+- **What is read:** rank costs, training and attribute points, race growth, the health table, Power, regeneration, armor, crit, signature skills and Logos damage. Skills, abilities and text always come from the client.
+- **Safety:** the planner only searches the fetched files for numbers. Nothing from them is ever run. Each number has a range check, and the health and regeneration formulas are checked for the expected shape.
+- **If something can't be read:** that number keeps its built-in value, and the dialog lists it.
+- **With no connection:** each loaded source's files are saved in the browser (the 6 most recent sources), so the planner reads those instead and shows the date of the copy. With no saved copy, it uses the built-in numbers. A service worker (`sw.js`) also keeps the site and icons, so the page opens offline once it has been visited. Without the web fonts it falls back to a system font.
+- **A formula rewritten in a new shape** is refused rather than misread, so a large server change needs a matching change to the patterns in `js/serverrules.js`.
+- **Logos damage:** the planner watches for `logosBonusPercent` being used, a Mind damage divisor being declared, or Mind appearing in `AbilityManager.cs` or `GameEffectManager.cs`. Any of these marks it as applied, and it uses the server's rate if there is one.
+
+The built-in numbers live in `js/rules.js`, with a source note on each one. Apart from the client's rates, they are the emulator's reconstruction: the original retail server's formulas were never published, and Rasa.NET's Power line is marked as a test in its source. If your server uses different numbers, point **Server rules** at its repository.
 
 ## Tests
 
