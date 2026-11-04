@@ -2,7 +2,7 @@ import { GAME } from './data/gamedata.js';
 import { store, encodeShare, decodeShare } from './storage.js';
 import {
   MAX_LEVEL, rankCost, skillPointBudget, attributePointBudget, baseAttributes, derivedStats,
-  lineage, availableSkills, rankOf, minRank, spentSkillPoints, spentAttributePoints, validate,
+  lineage, availableSkills, rankOf, minRank, skillCost, spentSkillPoints, spentAttributePoints, validate,
   displayName, skillKind,
 } from './rules.js';
 import { abilityText } from './abilitytext.js';
@@ -88,7 +88,8 @@ function adjustAttribute(key, delta) {
 function setAttributeTotal(key, total) {
   const { character, build } = current();
   const base = baseAttributes(character.race, build.level)[key];
-  if (!Number.isFinite(total)) { render(); return; }
+  if (total === '' || !Number.isFinite(Number(total))) { render(); return; }
+  total = Number(total);
   adjustAttribute(key, Math.round(total) - base - (build.attributes[key] || 0));
 }
 
@@ -234,7 +235,7 @@ function renderSheet(character, build) {
           type: 'number', class: `value${spent > 0 ? ' boosted' : ''}`, inputmode: 'numeric',
           min: base[a.key], max: base[a.key] + spent + room, value: base[a.key] + spent,
           'aria-label': `${a.name} total`, 'data-focus-key': `attrv:${a.key}`,
-          onchange: e => setAttributeTotal(a.key, Number(e.target.value)),
+          onchange: e => setAttributeTotal(a.key, e.target.value),
         }),
         step(1, '+', '+', true),
         step(10, '+10', '+10')));
@@ -246,16 +247,16 @@ function renderSheet(character, build) {
   $('#attrs-sec').open = !isPhone() || !collapsed.has('attrs');
 
   const fmt = n => (Math.round(n * 100) / 100).toLocaleString();
-  const stat = (label, value, unit) => el('div', { class: 'stat' },
+  const stat = (label, value, unit, title) => el('div', { class: 'stat', title },
     el('span', { class: 'stat-label' }, label),
     el('span', { class: 'stat-value' }, el('b', {}, String(value)), unit ? el('small', {}, unit) : null));
   $('#derived').replaceChildren(
     stat('Health', d.health.toLocaleString()),
     stat('Power', d.power.toLocaleString()),
     stat('Regen', `${d.regen}%`, ` ${d.regenPerSecond}/s`),
-    stat('Armor', fmt(d.armorBonus), '%'),
-    stat('Logos dmg', fmt(d.logosBonus), '%'),
-    stat('Crit', fmt(d.critBonus), '%'));
+    stat('Armor', `+${fmt(d.armorBonus)}`, '%', 'Bonus to the armor you wear, from all your Body'),
+    stat('Logos dmg', `+${fmt(d.logosBonus)}`, '%', 'Retail rate from the client. Rasa.NET does not apply this yet.'),
+    stat('Crit', fmt(d.critChance), '%', 'Crit chance: 5% base plus Spirit above your level\'s base'));
 
   const issues = validate(build, character.race);
   $('#issues').replaceChildren(...issues.map(i => el('li', { class: i.level }, i.text)));
@@ -360,7 +361,7 @@ function renderSkills(build) {
   const groups = lineage(build.career).map(classId => {
     const c = GAME.classes[classId];
     const skills = Object.keys(GAME.skills).map(Number).filter(id => GAME.skills[id].class === classId);
-    const spent = skills.reduce((n, id) => n + rankCost(rankOf(build, id)), 0);
+    const spent = skills.reduce((n, id) => n + skillCost(id, rankOf(build, id)), 0);
     const key = `tier:${classId}`;
     return el('details', {
       class: 'panel tier', 'data-tier': c.tier, open: !collapsed.has(key),
@@ -399,14 +400,14 @@ function skillCard(skillId, build) {
         return el('button', {
           type: 'button', class: `rank${r <= rank ? ' on' : ''}${r <= min ? ' base' : ''}${cant ? ' cant' : ''}`, 'data-focus-key': `rank:${skillId}:${r}`,
           'aria-pressed': String(r <= rank),
-          'aria-label': `${name} rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
+          'aria-label': s.signature ? `${name}, granted with the class` : `${name} rank ${r}${r <= min ? ', free starting rank' : ''}${cant ? ', not enough points' : ''}`,
           onclick: () => {
             editBuild(b => setRank(b, skillId, r === rank ? r - 1 : r));
             select(skillId, r);
           },
           onmouseenter: () => preview(skillId, r),
           onfocus: () => preview(skillId, r),
-        }, s.maxRank === 1 ? (s.signature ? 'Signature' : 'Train') : String(r));
+        }, s.signature ? 'Granted' : String(r));
       }),
       el('span', { class: 'rank-readout', 'aria-hidden': 'true' }, `${rank}/${s.maxRank}`),
       rank > min ? el('button', { type: 'button', class: 'clear ghost', 'data-focus-key': `clear:${skillId}`, title: 'Reset this skill', 'aria-label': `Reset ${name}`,
@@ -460,7 +461,7 @@ function renderDetail(build, character, override) {
           type: 'button', class: `rank${r <= owned ? ' on' : ''}${r <= min ? ' base' : ''}${r === rank ? ' viewing' : ''}`,
           'aria-pressed': String(r === rank), 'aria-label': `View rank ${r}${r <= owned ? ', owned' : ''}`, 'data-focus-key': `view:${id}:${r}`,
           onclick: () => select(id, r),
-        }, s.maxRank === 1 ? (s.signature ? 'Signature' : 'Train') : String(r));
+        }, s.signature ? 'Granted' : String(r));
       })),
     el('p', { class: 'meta' },
       el('span', { class: 'tag', 'data-kind': kind.toLowerCase() }, kind),
@@ -491,7 +492,9 @@ function renderDetail(build, character, override) {
   // Cost line plus a train/untrain action, so the rank can be changed from the detail sheet too.
   const left = skillPointBudget(build.level) - spentSkillPoints(build);
   let costText, action = null;
-  if (owned >= rank) {
+  if (s.signature) {
+    costText = `Granted free with the ${GAME.classes[s.class].name} class`;
+  } else if (owned >= rank) {
     costText = `Owned · rank ${owned}` + (owned < s.maxRank ? ` · rank ${owned + 1} costs ${owned + 1} more point${owned + 1 > 1 ? 's' : ''}` : ' · maximum rank');
     if (rank > min) action = el('button', { type: 'button', class: 'detail-act', 'data-focus-key': `act:${id}`,
       onclick: () => { editBuild(b => setRank(b, id, rank - 1)); select(id, Math.max(1, rank - 1)); } }, `Untrain to rank ${rank - 1}`);
@@ -572,7 +575,7 @@ function wire() {
   $('#level-down').addEventListener('click', () => setLevel(store.activeBuild().level - 1));
   $('#level-up').addEventListener('click', () => setLevel(store.activeBuild().level + 1));
   $('#level-range').addEventListener('input', e => setLevel(e.target.value));
-  $('#level-input').addEventListener('change', e => setLevel(e.target.value));
+  $('#level-input').addEventListener('change', e => { if (e.target.value === '') render(); else setLevel(e.target.value); });
 
   // Phone: the career tree is hidden behind the path strip until asked for.
   $('#career-toggle').addEventListener('click', () => { careerTreeOpen = !careerTreeOpen; render(); });

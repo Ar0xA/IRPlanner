@@ -65,9 +65,25 @@ const HEALTH_BASELINE = [
   12968.4632023, 14142.19464703, 15422.15652808, 16817.9634005, 18340.1, 20000,
 ];
 
+// [client] shared/gameconstants: what the retail server used. The client defines these but never
+// reads them, so they are the only record of the retail rates.
+// (BODY_ARMOR_DIVISOR is 1.5: 1% armor per 1.5 Body, which the server's 0.0066666 below matches.)
+const MIND_DAMAGE_DIVISOR = 3;     // 1% Logos damage per 3 Mind
+const SPIRIT_CRIT_DIVISOR = 15;    // 1% crit chance per 15 Spirit
+export const BASE_CRITICAL_CHANCE = 5;
+
+// C# Math.Round: a midpoint goes to the even neighbour (2.5 -> 2, 3.5 -> 4).
+function roundHalfEven(x) {
+  const floor = Math.floor(x);
+  const diff = x - floor;
+  if (diff !== 0.5) return Math.round(x);
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+
 // [server] UpdateStatsValues, without equipment modules or active effects.
-// Float math in C# single precision is close enough to double here; results are truncated
-// to int exactly like the server's (int) casts.
+// The server does this in C# single-precision floats and truncates with (int). Math.fround
+// repeats that step by step: plain doubles can land just under a whole number and truncate
+// to one less than the server shows.
 export function derivedStats(raceKey, level, spent) {
   const base = baseAttributes(raceKey, level);
   const body = base.body + (spent.body || 0);
@@ -76,17 +92,27 @@ export function derivedStats(raceKey, level, spent) {
   const humanBase = 2 * (level - 1) + 10;
   const divisor = 2 * (level - 1) + 2 * humanBase + 10;
 
-  const health = Math.max(1, Math.trunc((HEALTH_BASELINE[level - 1] / divisor) * (spirit + 2 * body)));
-  const power = Math.trunc(((3 * level + 100) / divisor) * (body + 2 * mind));
-  const regen = Math.trunc(((2 * level + 100) / divisor) * (mind + 2 * spirit));
-  const regenPerSecond = Math.round((2 * regen) / 100);
+  const f = Math.fround;
+  const perHealth = f(f(HEALTH_BASELINE[level - 1]) / f(divisor));
+  const health = Math.max(1, Math.trunc(f(perHealth * f(spirit + 2 * body))));
+  // The Power attribute's own line, near the end of UpdateStatsValues. Only spent Mind counts,
+  // not a race's Mind growth. (The Body + 2 Mind formula was the old adrenaline bar, which is
+  // now a fixed 1000 for everyone.)
+  const power = 100 + (level - 1) * 8 + (spent.mind || 0) * 3;
+  const perRegen = f(f(2 * level + 100) / f(divisor));
+  const regen = Math.trunc(f(perRegen * f(mind + 2 * spirit)));
+  const regenPerSecond = roundHalfEven((2 * regen) / 100);
 
   return {
     body, mind, spirit,
     health, power, regen, regenPerSecond,
-    armorBonus: Math.max(0, (body - humanBase) * 0.667),
-    logosBonus: Math.max(0, (mind - humanBase) * 0.375),
-    critBonus: Math.max(0, (spirit - humanBase) * 0.065),
+    // [server] armorMax * (1 + total Body * 0.0066666): a bonus on worn armor, from all Body.
+    armorBonus: body * 0.66666,
+    // [client] rate only: Rasa.NET does not apply Mind to Logos damage yet. Measured above the
+    // level's base, like crit.
+    logosBonus: Math.max(0, mind - humanBase) / MIND_DAMAGE_DIVISOR,
+    // [server] CriticalHits.AttackerChance: base chance plus Spirit above the level's base.
+    critChance: BASE_CRITICAL_CHANCE + Math.max(0, spirit - humanBase) / SPIRIT_CRIT_DIVISOR,
   };
 }
 
@@ -102,8 +128,19 @@ export function isStartingSkill(skillId) {
   return STARTING_SKILL_KEYS.includes(GAME.skills[skillId]?.key);
 }
 
+// [server] IsSignatureSkill / GrantSignatureSkill: a Tier IV class's signature ability is given
+// at its one rank with the class. It cannot be trained and costs no points.
+export function isSignatureSkill(skillId) {
+  return !!GAME.skills[skillId]?.signature;
+}
+
 export function minRank(skillId) {
-  return isStartingSkill(skillId) ? 1 : 0;
+  return isStartingSkill(skillId) || isSignatureSkill(skillId) ? 1 : 0;
+}
+
+// Points a skill uses at a rank: the normal cost, except for signature skills.
+export function skillCost(skillId, rank) {
+  return isSignatureSkill(skillId) ? 0 : rankCost(rank);
 }
 
 // Skills a build can train: every skill of its class and the classes above it.
@@ -119,13 +156,41 @@ export function rankOf(build, skillId) {
 
 export function spentSkillPoints(build) {
   let total = 0;
-  for (const id of Object.keys(GAME.skills)) total += rankCost(rankOf(build, Number(id)));
+  for (const id of Object.keys(GAME.skills)) total += skillCost(Number(id), rankOf(build, Number(id)));
   return total;
 }
 
 export function spentAttributePoints(build) {
   const a = build.attributes;
   return (a.body || 0) + (a.mind || 0) + (a.spirit || 0);
+}
+
+// Force a build's numbers into what the game allows, so a hand-edited backup or a damaged share
+// code cannot break the page. Skills of classes off the path are dropped: they cannot be shown.
+export function normalizeBuild(b) {
+  const int = (v, min, max) => (Number.isInteger(v) ? Math.min(max, Math.max(min, v)) : min);
+  const career = GAME.classes[b.career] ? b.career : 1;
+  const allowed = new Set(availableSkills(career));
+  const skills = {};
+  for (const [id, rank] of Object.entries(b.skills || {})) {
+    const n = Number(id);
+    if (!allowed.has(n) || isSignatureSkill(n)) continue;
+    const r = int(rank, minRank(n), GAME.skills[n].maxRank);
+    if (r > minRank(n)) skills[n] = r;
+  }
+  const a = b.attributes || {};
+  const big = attributePointBudget(MAX_LEVEL);
+  return {
+    ...b,
+    level: int(b.level, 1, MAX_LEVEL),
+    career,
+    skills,
+    attributes: { body: int(a.body, 0, big), mind: int(a.mind, 0, big), spirit: int(a.spirit, 0, big) },
+  };
+}
+
+export function normalizeRace(raceKey) {
+  return RACE_GROWTH[raceKey] ? raceKey : 'human';
 }
 
 // Everything wrong with a build, for display. Each issue: { level: 'error' | 'warn', text }.

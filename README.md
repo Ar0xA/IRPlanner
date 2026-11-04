@@ -14,8 +14,8 @@
 ## Where the data comes from
 
 The planner's data comes from two places:
-- **The game client:** everything the in-game skills window can show on its own.
-- **The server:** the progression rules. The client never had these, because the server decides how many points you get and what your stats are, and sends the client the results.
+- **The game client:** everything the in-game skills window can show on its own, plus the retail attribute rates.
+- **The server:** the progression rules. The server decides how many points you get and what your stats are, and sends the client the results, so the client doesn't contain them.
 
 ### From the client (1.16.5.0)
 
@@ -31,6 +31,7 @@ These are read straight from the client's files and code by the scripts in `tool
 | Ability damage and healing at the build's level | The client's own tooltip code, ported: `GetAbilityDataDict` and `shared/scaling` (`ScaleActorAmount`); see `tools/ABILITY_TOOLTIPS.md` |
 | Logos each ability needs | `generated/client/logosstone` (`logosSequences`) |
 | Rank cost: raising a skill to rank N costs N points | The skills window code: `client/ui/skillsabilitieswindow` (`OnPlus`) |
+| Retail attribute rates: 1% armor per 1.5 Body, 1% Logos damage per 3 Mind, 1% crit per 15 Spirit, 5% base crit | `shared/gameconstants` (`BODY_ARMOR_DIVISOR`, `MIND_DAMAGE_DIVISOR`, `SPIRIT_CRIT_DIVISOR`, `BASE_CRITICAL_CHANCE`). The client defines these but never reads them; they were for the retail server. |
 | Skill, per-rank and class icons | UI textures in `data/*.glm`, picked the way the skills window picks them (`GetSkillIcon`, `GetAbilityIcon`, `LoadCharacterClassIcon`) |
 
 The output is `js/data/gamedata.js`, the icons in `img/`, and the tooltip formatting in `js/abilityscale.js`.
@@ -43,13 +44,27 @@ These numbers are not in the client at all. The planner follows the [Rasa.NET](h
 |---|---|
 | Training points | 2 per level after level 1, plus 5 for the starting Recruit ranks, plus 2 at levels 5, 15 and 30, plus 4 at level 50 (69 at level 30, 113 at level 50) |
 | Starting skills | New characters have Firearms, Hand to Hand, Motor Assist Armor, Lightning and Sprint at rank 1. Those ranks can't be removed. |
-| Signature skills | Training one costs 1 point, like any other rank 1 |
+| Signature skills | Granted free with the Tier IV class. They can't be trained and cost no points. |
 | Attribute points | 3 per level after level 1 |
 | Race growth per level (Body / Mind / Spirit) | Human 2/2/2, Forean 1/3/2, Brann 1/1/4, Thrax 3/1/2, from a base of 10/10/10 |
-| Health, power, regeneration | Rasa.NET's formulas (`UpdateStatsValues`), with no gear or buffs |
-| Armor, Logos damage and crit bonus | 0.667% / 0.375% / 0.065% per point of Body / Mind / Spirit above a human's base for that level |
+| Health and regeneration | Rasa.NET's formulas (`UpdateStatsValues`), with no gear or buffs |
+| Power | 100, plus 8 per level after level 1, plus 3 per point spent on Mind. Race Mind growth doesn't count. |
+| Armor bonus | Multiplies the armor you wear by 1 + 0.66666% per point of total Body |
+| Crit chance | 5% plus 1% per 15 Spirit above a human's base for that level (`CriticalHits.cs`) |
+| Logos damage | **Not applied by Rasa.NET yet.** The planner shows the retail rate from the client, above a human's base for that level. |
+| Adrenaline | A fixed 1000-point bar for everyone, so it isn't a planner stat |
 
-All of these live in `js/rules.js`, with a source note on each one. They are the emulator's reconstruction: the original retail server's formulas were never published. If your server uses different numbers, `js/rules.js` is the only file to change.
+All of these live in `js/rules.js`, with a source note on each one. Apart from the client's rates, they are the emulator's reconstruction: the original retail server's formulas were never published, and Rasa.NET's Power line is marked as a test in its source. If your server uses different numbers, `js/rules.js` is the only file to change.
+
+## Tests
+
+Open `tests/index.html` from a local server, or at `/tests/` on the live site. It checks the rules against the rows in Rasa.NET's own unit tests and against `tests/expected_stats.json`, an independent version of the server's 32-bit float math covering every race and level. It also checks the client data, point budgets, class gating, damaged imports, share codes and ability tooltips.
+
+To rebuild the reference after a server change (it reads the health table from the server source; needs numpy):
+
+```bash
+python -I tools/gen_expected_stats.py path/to/ManifestationManager.cs
+```
 
 ## Regenerating the game data and icons
 

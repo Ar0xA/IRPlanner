@@ -3,6 +3,8 @@
 // Every read/write is guarded: storage can be unavailable (private mode, blocked
 // site data), and the app must still work in memory.
 
+import { normalizeBuild, normalizeRace } from './rules.js';
+
 const KEY = 'irplanner.v2';
 const LEGACY_KEYS = ['afsplanner.v2']; // read once if KEY is empty (the app was called AFSPlanner)
 
@@ -17,6 +19,7 @@ function load() {
     if (!raw) return blankState();
     const state = JSON.parse(raw);
     if (!state || !Array.isArray(state.characters)) return blankState();
+    state.characters = state.characters.filter(c => c && typeof c === 'object').map(cleanCharacter);
     return state;
   } catch {
     return blankState();
@@ -163,10 +166,11 @@ export const store = {
 
   // Import a shared build as a new character, or as a new build of the active one.
   importShared(shared, { asNewCharacter }) {
-    const build = { ...newBuild(), ...sanitizeBuild(shared.build) };
+    const build = cleanBuild({ ...shared.build, id: undefined });
     if (asNewCharacter || !this.activeCharacter()) {
-      const c = newCharacter(shared.character || 'Imported character');
-      c.race = shared.race || 'human';
+      const name = typeof shared.character === 'string' && shared.character ? shared.character.slice(0, 60) : 'Imported character';
+      const c = newCharacter(name);
+      c.race = normalizeRace(shared.race);
       c.builds = [build];
       c.activeBuildId = build.id;
       state.characters.push(c);
@@ -186,15 +190,33 @@ export const store = {
   importAll(json) {
     const incoming = JSON.parse(json);
     if (!incoming || !Array.isArray(incoming.characters)) throw new Error('Not an IRPlanner backup');
-    for (const c of incoming.characters) {
-      const copy = structuredClone(c);
-      copy.id = uid();
-      state.characters.push(copy);
-    }
+    const restored = incoming.characters.filter(c => c && typeof c === 'object');
+    for (const c of restored) state.characters.push({ ...cleanCharacter(c), id: uid() });
+    state.activeCharacterId ??= state.characters[0]?.id ?? null;
     save();
-    return incoming.characters.length;
+    return restored.length;
   },
 };
+
+// Saved and imported data is checked before use: it may be old, hand-edited or damaged.
+function cleanBuild(b) {
+  const clean = normalizeBuild({ ...newBuild(), ...sanitizeBuild(b) });
+  if (typeof b?.id === 'string' && b.id) clean.id = b.id;
+  return clean;
+}
+
+function cleanCharacter(c) {
+  const builds = (Array.isArray(c.builds) ? c.builds : []).filter(b => b && typeof b === 'object').map(cleanBuild);
+  if (!builds.length) builds.push(newBuild());
+  return {
+    ...c,
+    id: typeof c.id === 'string' && c.id ? c.id : uid(),
+    name: typeof c.name === 'string' && c.name ? c.name.slice(0, 60) : 'Unnamed',
+    race: normalizeRace(c.race),
+    builds,
+    activeBuildId: builds.some(b => b.id === c.activeBuildId) ? c.activeBuildId : builds[0].id,
+  };
+}
 
 function sanitizeBuild(b = {}) {
   const out = {};
